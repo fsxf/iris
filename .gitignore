@@ -10,3 +10,14 @@ data/build-info/
 data/project-sources
 log/
 config.json
+.env.deepseek.local
+.env.*.local
+.miniconda3/
+.tools/
+.downloads/
+.cache/
+.codeql/
+.gradle-home/
+.anaconda/
+.conda/
+.codex
