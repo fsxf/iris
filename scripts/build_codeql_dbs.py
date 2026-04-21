@@ -34,6 +34,7 @@ def load_custom_build_commands(csv_path: str = BUILD_CMDS_CSV) -> dict[str, str]
 
 # Custom build commands for the CodeQL database creation (loaded from CSV)
 CUSTOM_BUILD_COMMANDS: dict[str, str] = load_custom_build_commands()
+CLI_BUILD_COMMANDS: dict[str, str] = {}
 
 def setup_environment(row):
     env = os.environ.copy()
@@ -68,7 +69,7 @@ def setup_environment(row):
     
     return env
 
-def create_codeql_database(project_slug, env, db_base_path, sources_base_path, language="java"):
+def create_codeql_database(project_slug, env, db_base_path, sources_base_path, language="java", build_mode=None):
     language_config = get_language_config(language)
     print("\nEnvironment variables for CodeQL database creation:")
     print(f"PATH: {env.get('PATH', 'Not set')}")
@@ -76,7 +77,7 @@ def create_codeql_database(project_slug, env, db_base_path, sources_base_path, l
         print(f"JAVA_HOME: {env.get('JAVA_HOME', 'Not set')}")
     
     # Prefer custom build command when available
-    custom_cmd = CUSTOM_BUILD_COMMANDS.get(project_slug)
+    custom_cmd = CLI_BUILD_COMMANDS.get(project_slug) or CUSTOM_BUILD_COMMANDS.get(project_slug)
     
     if language_config.name == "java":
         try:
@@ -103,6 +104,9 @@ def create_codeql_database(project_slug, env, db_base_path, sources_base_path, l
     if custom_cmd:
         print(f"Using custom build command for {project_slug}: {custom_cmd}")
         command.extend(["--command", custom_cmd])
+    elif build_mode:
+        print(f"Using CodeQL build mode for {project_slug}: {build_mode}")
+        command.extend(["--build-mode", build_mode])
     
     try:
         print(f"Creating database at: {database_path}")
@@ -200,7 +204,7 @@ def create_codeql_database_in_container(project_slug: str, row: dict, db_base_pa
             print("No patch found; skipping patching.")
 
         # Prefer custom build command when available
-        custom_cmd = CUSTOM_BUILD_COMMANDS.get(project_slug)
+        custom_cmd = CLI_BUILD_COMMANDS.get(project_slug) or CUSTOM_BUILD_COMMANDS.get(project_slug)
         if custom_cmd:
             print(f"Using custom build command for {project_slug}: {custom_cmd}")
             codeql_cmd = (f"{container_codeql_bin} database create {container_db_dir} "
@@ -234,12 +238,19 @@ def main():
     parser.add_argument('--project', help='Specific project slug', default=None)
     parser.add_argument('--language', choices=['java', 'python', 'cpp'], default='java',
                         help='CodeQL language for database creation. Defaults to java.')
+    parser.add_argument('--command', help='Build command for CodeQL database creation, for example: "make"', default=None)
+    parser.add_argument('--build-mode', choices=['none'], default=None,
+                        help='CodeQL build mode to use when no build command is supplied. Useful for C/C++ smoke tests.')
     parser.add_argument('--db-path', help='Base path for storing CodeQL databases', default=CODEQL_DB_PATH)
     parser.add_argument('--sources-path', help='Base path for project sources', default=PROJECT_SOURCE_CODE_DIR)
     parser.add_argument('--use-container', action='store_true', help='Create DB inside the project container using mounted CodeQL')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output during database creation')
     args = parser.parse_args()
     language = normalize_language(args.language)
+    if args.command:
+        if not args.project:
+            raise ValueError("--command requires --project")
+        CLI_BUILD_COMMANDS[args.project] = args.command
 
     if args.use_container and language != "java":
         raise NotImplementedError("--use-container is currently only supported for Java projects")
@@ -256,10 +267,11 @@ def main():
                 create_codeql_database_in_container(project['project_slug'], project, args.db_path, args.verbose)
             else:
                 env = setup_environment(project) if language == "java" else os.environ.copy()
-                if language == "cpp" and project['project_slug'] not in CUSTOM_BUILD_COMMANDS:
-                    print("Warning: C/C++ CodeQL databases usually need a build command. "
-                          "Add one to data/build_cmds.csv if database creation does not see compiled code.")
-                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language)
+                build_mode = args.build_mode
+                if language == "cpp" and project['project_slug'] not in CLI_BUILD_COMMANDS and project['project_slug'] not in CUSTOM_BUILD_COMMANDS:
+                    build_mode = build_mode or "none"
+                    print("No C/C++ build command supplied; using CodeQL build-mode=none.")
+                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language, build_mode=build_mode)
         else:
             print(f"Project {args.project} not found in CSV file")
     else:
@@ -270,7 +282,7 @@ def main():
                 create_codeql_database_in_container(project['project_slug'], project, args.db_path, args.verbose)
             else:
                 env = setup_environment(project)
-                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language)
+                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language, build_mode=args.build_mode)
 
 # Location of build_info_local.csv file
 LOCAL_BUILD_INFO = os.path.join(DATA_DIR, "build-info", "build_info_local.csv")
