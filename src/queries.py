@@ -96,6 +96,14 @@ least privilege database access, and error message suppression are also importan
       ]
     }
   },
+  "cwe-089wCodeQL": {
+    "name": "cwe-089wCodeQL",
+    "cwe_id": "089",
+    "cwe_id_short": "89",
+    "cwe_id_tag": "CWE-89",
+    "type": "codeql-query",
+    "experimental": False,
+  },
   "cwe-022wLLM": {
     "name": "cwe-022wLLM",
     "type": "cwe-query",

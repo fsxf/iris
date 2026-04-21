@@ -19,7 +19,8 @@ THIS_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 NEUROSYMSA_ROOT_DIR = os.path.abspath(f"{THIS_SCRIPT_DIR}/../")
 sys.path.append(NEUROSYMSA_ROOT_DIR)
 
-from src.config import CODEQL_DIR, CODEQL_DB_PATH, OUTPUT_DIR, ALL_METHOD_INFO_DIR, PROJECT_SOURCE_CODE_DIR, CVES_MAPPED_W_COMMITS_DIR, CODEQL_QUERY_VERSION, IRIS_ROOT_DIR
+from src.config import CODEQL_DIR, CODEQL_DB_PATH, OUTPUT_DIR, ALL_METHOD_INFO_DIR, PROJECT_SOURCE_CODE_DIR, CVES_MAPPED_W_COMMITS_DIR, IRIS_ROOT_DIR
+from src.language_config import get_cwe_query_dir, get_language_config, normalize_language
 
 
 from src.logger import Logger
@@ -37,49 +38,87 @@ from src.modules.codeql_query_runner import CodeQLQueryRunner
 from src.modules.evaluation_pipeline import EvaluationPipeline
 
 
+CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL$")
+
+
+def resolve_codeql_query_metadata(query: str) -> dict:
+    if query in QUERIES:
+        query_metadata = QUERIES[query]
+        if "cwe_id" not in query_metadata:
+            raise ValueError(f"Query `{query}` is not a query for detecting CWE")
+        if query_metadata.get("type") != "codeql-query":
+            raise ValueError(f"Query `{query}` is not a native CodeQL query")
+        return {
+            "name": query_metadata.get("name", query),
+            "cwe_id": query_metadata["cwe_id"],
+            "experimental": query_metadata.get("experimental", False),
+            "registered": True,
+        }
+
+    match = CODEQL_QUERY_NAME_RE.match(query)
+    if not match:
+        raise ValueError(f"Unknown query `{query}`")
+
+    return {
+        "name": query,
+        "cwe_id": match.group("cwe_id"),
+        "experimental": False,
+        "registered": False,
+    }
+
+
 class CodeQLSAPipeline:
     def __init__(
             self,
             project_name: str,
             query: str,
+            language: str = "java",
             evaluation_only: bool = False,
+            skip_evaluation: bool = False,
             overwrite: bool = False
     ):
         # Store basic information
         self.project_name = project_name
         self.query = query
+        self.language = normalize_language(language)
+        self.language_config = get_language_config(self.language)
         self.evaluation_only = evaluation_only
+        self.skip_evaluation = skip_evaluation or self.language != "java"
         self.overwrite = overwrite
 
         # Setup logger
         self.master_logger = Logger(f"{IRIS_ROOT_DIR}/log")
 
         # Check if the query is valid
-        if self.query in QUERIES:
-            if "cwe_id" not in QUERIES[self.query]:
-                self.master_logger.info(f"Processing {self.project_name} (Query: {self.query}, Trial: {self.run_id})...")
-                self.master_logger.error(f"==> Query `{self.query}` is not a query for detecting CWE; aborting"); exit(1)
-        else:
-            self.master_logger.info(f"Processing {self.project_name} (Query: {self.query}, Trial: {self.run_id})...")
-            self.master_logger.error(f"==> Unknown query `{self.query}`; aborting"); exit(1)
-        self.cwe_id = QUERIES[self.query]["cwe_id"]
-        self.experimental = QUERIES[self.query]["experimental"]
-        self.cve_id = project_name.split("_")[3]
+        try:
+            self.query_metadata = resolve_codeql_query_metadata(self.query)
+        except ValueError as e:
+            self.master_logger.info(f"Processing {self.project_name} (Query: {self.query})...")
+            self.master_logger.error(f"==> {e}; aborting"); exit(1)
+        self.cwe_id = self.query_metadata["cwe_id"]
+        self.experimental = self.query_metadata["experimental"]
 
-        # Load some basic information, such as commits and fixes related to the CVE
-        self.all_cves_with_commit = pd.read_csv(CVES_MAPPED_W_COMMITS_DIR)
-        self.project_cve_with_commit_info = self.all_cves_with_commit[self.all_cves_with_commit["cve"] == self.cve_id].iloc[0]
-        self.cve_fixing_commits = self.project_cve_with_commit_info["commits"].split(";")
-        self.fixed_methods = pd.read_csv(ALL_METHOD_INFO_DIR)
-        self.project_fixed_methods = self.fixed_methods[self.fixed_methods["db_name"] == self.project_name]
+        if not self.skip_evaluation:
+            # Load some basic information, such as commits and fixes related to the CVE.
+            # This metadata currently belongs to CWE-Bench-Java, so it is only used for
+            # the Java evaluation path.
+            self.cve_id = project_name.split("_")[3]
+            self.all_cves_with_commit = pd.read_csv(CVES_MAPPED_W_COMMITS_DIR)
+            self.project_cve_with_commit_info = self.all_cves_with_commit[self.all_cves_with_commit["cve"] == self.cve_id].iloc[0]
+            self.cve_fixing_commits = self.project_cve_with_commit_info["commits"].split(";")
+            self.fixed_methods = pd.read_csv(ALL_METHOD_INFO_DIR)
+            self.project_fixed_methods = self.fixed_methods[self.fixed_methods["db_name"] == self.project_name]
+        else:
+            self.project_fixed_methods = None
         self.project_source_code_dir = f"{PROJECT_SOURCE_CODE_DIR}/{self.project_name}"
 
         # Basic path information
-        self.project_output_path = f"{OUTPUT_DIR}/{self.project_name}/common"
+        output_suffix = "common" if self.language == "java" else f"codeql-{self.language}"
+        self.project_output_path = f"{OUTPUT_DIR}/{self.project_name}/{output_suffix}"
 
         # Setup codeql database path
         self.project_codeql_db_path = f"{CODEQL_DB_PATH}/{self.project_name}"
-        if not os.path.exists(f"{self.project_codeql_db_path}/db-java"):
+        if not os.path.exists(f"{self.project_codeql_db_path}/{self.language_config.database_subdir}"):
             self.master_logger.info(f"Processing {self.project_name} (Query: {self.query}...")
             self.master_logger.error(f"==> Cannot find CodeQL database for {self.project_name}; aborting"); exit(1)
 
@@ -97,23 +136,24 @@ class CodeQLSAPipeline:
     def run_codeql_query(self):
         self.master_logger.info("==> Stage 1: Running CodeQL queries...")
 
-        exp = "experimental/" if self.experimental else ""
+        query_dir = get_cwe_query_dir(CODEQL_DIR, self.language, self.cwe_id, self.experimental)
+        if not os.path.exists(query_dir):
+            self.master_logger.error(f"==> Cannot find CodeQL query directory `{query_dir}`; aborting"); exit(1)
 
         cmd = [
-            "codeql",
+            f"{CODEQL_DIR}/codeql",
             "database",
             "analyze",
             self.project_codeql_db_path,
-            f"--output={self.query_output_result_sarif_path}",
-            f"{CODEQL_DIR}/qlpacks/codeql/java-queries/{CODEQL_QUERY_VERSION}/{exp}Security/CWE/CWE-{self.cwe_id}/"
+            query_dir
         ]
 
         if self.overwrite:
             cmd += ["--rerun"]
 
-        sp.run(cmd + ["--format=sarif-latest"])
+        sp.run(cmd + [f"--output={self.query_output_result_sarif_path}", "--format=sarif-latest"])
 
-        sp.run(cmd + ["--format=csv"])
+        sp.run(cmd + [f"--output={self.query_output_result_csv_path}", "--format=csv"])
 
     def run_simple_codeql_query(self, query, target_csv_path=None, suffix=None, dyn_queries={}):
         runner = CodeQLQueryRunner(self.project_output_path, self.project_codeql_db_path, self.master_logger)
@@ -142,6 +182,10 @@ class CodeQLSAPipeline:
         )
 
     def evaluate_result(self):
+        if self.skip_evaluation:
+            self.master_logger.info("==> Stage 2: Skipping evaluation for non-Java/native CodeQL run...")
+            return
+
         self.master_logger.info("==> Stage 2: Evaluating results...")
 
         # 1. Extract class and function locations
@@ -156,6 +200,8 @@ class CodeQLSAPipeline:
 
     def run(self):
         if self.evaluation_only:
+            if self.skip_evaluation:
+                self.master_logger.error("==> Evaluation is currently only supported for the Java CWE-Bench pipeline; aborting"); exit(1)
             self.evaluate_result()
         else:
             self.run_codeql_query()
@@ -166,6 +212,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("project", type=str)
     parser.add_argument("--query", type=str, default="cwe-022wCodeQL", required=True)
+    parser.add_argument("--language", choices=["java", "python", "cpp"], default="java")
+    parser.add_argument("--skip-evaluation", action="store_true",
+                        help="Skip CWE-Bench-Java evaluation and only emit SARIF/CSV results")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--evaluation-only", action="store_true")
     args = parser.parse_args()
@@ -173,7 +222,9 @@ if __name__ == '__main__':
     pipeline = CodeQLSAPipeline(
         args.project,
         args.query,
+        language=args.language,
         evaluation_only=args.evaluation_only,
+        skip_evaluation=args.skip_evaluation,
         overwrite=args.overwrite,
     )
     pipeline.run()

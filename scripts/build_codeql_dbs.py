@@ -8,6 +8,7 @@ import json
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.config import CODEQL_DB_PATH, PROJECT_SOURCE_CODE_DIR, IRIS_ROOT_DIR, BUILD_INFO, DEP_CONFIGS, DATA_DIR, CODEQL_DIR, CVES_MAPPED_W_COMMITS_DIR
+from src.language_config import get_language_config, normalize_language
 from scripts.docker_utils import ensure_image, create_container, exec_in_container, parse_project_image, copy_dir_to_container, copy_from_container
 ALLVERSIONS = json.load(open(DEP_CONFIGS))
 
@@ -67,22 +68,25 @@ def setup_environment(row):
     
     return env
 
-def create_codeql_database(project_slug, env, db_base_path, sources_base_path):
+def create_codeql_database(project_slug, env, db_base_path, sources_base_path, language="java"):
+    language_config = get_language_config(language)
     print("\nEnvironment variables for CodeQL database creation:")
     print(f"PATH: {env.get('PATH', 'Not set')}")
-    print(f"JAVA_HOME: {env.get('JAVA_HOME', 'Not set')}")
+    if language_config.name == "java":
+        print(f"JAVA_HOME: {env.get('JAVA_HOME', 'Not set')}")
     
     # Prefer custom build command when available
     custom_cmd = CUSTOM_BUILD_COMMANDS.get(project_slug)
     
-    try:
-        java_version = subprocess.check_output(['java', '-version'], 
-                                            stderr=subprocess.STDOUT, 
-                                            env=env).decode()
-        print(f"\nJava version check:\n{java_version}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error checking Java version: {e}")
-        raise
+    if language_config.name == "java":
+        try:
+            java_version = subprocess.check_output(['java', '-version'], 
+                                                stderr=subprocess.STDOUT, 
+                                                env=env).decode()
+            print(f"\nJava version check:\n{java_version}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error checking Java version: {e}")
+            raise
     
     database_path = os.path.abspath(os.path.join(db_base_path, project_slug))
     source_path = os.path.abspath(os.path.join(sources_base_path, project_slug))
@@ -93,7 +97,7 @@ def create_codeql_database(project_slug, env, db_base_path, sources_base_path):
         "codeql", "database", "create",
         database_path,
         "--source-root", source_path,
-        "--language", "java",
+        "--language", language_config.codeql_language,
         "--overwrite",
     ]
     if custom_cmd:
@@ -103,7 +107,9 @@ def create_codeql_database(project_slug, env, db_base_path, sources_base_path):
     try:
         print(f"Creating database at: {database_path}")
         print(f"Using source path: {source_path}")
-        print(f"Using JAVA_HOME: {env.get('JAVA_HOME', 'Not set')}")
+        print(f"Using CodeQL language: {language_config.codeql_language}")
+        if language_config.name == "java":
+            print(f"Using JAVA_HOME: {env.get('JAVA_HOME', 'Not set')}")
         res=subprocess.run(command, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res.returncode != 0:
             print(f"Error creating CodeQL database: {res.stderr.decode()} \n {res.stdout.decode()}")
@@ -226,32 +232,45 @@ def create_codeql_database_in_container(project_slug: str, row: dict, db_base_pa
 def main():
     parser = argparse.ArgumentParser(description='Create CodeQL databases for cwe-bench-java projects')
     parser.add_argument('--project', help='Specific project slug', default=None)
+    parser.add_argument('--language', choices=['java', 'python', 'cpp'], default='java',
+                        help='CodeQL language for database creation. Defaults to java.')
     parser.add_argument('--db-path', help='Base path for storing CodeQL databases', default=CODEQL_DB_PATH)
     parser.add_argument('--sources-path', help='Base path for project sources', default=PROJECT_SOURCE_CODE_DIR)
     parser.add_argument('--use-container', action='store_true', help='Create DB inside the project container using mounted CodeQL')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output during database creation')
     args = parser.parse_args()
+    language = normalize_language(args.language)
+
+    if args.use_container and language != "java":
+        raise NotImplementedError("--use-container is currently only supported for Java projects")
 
     # Load build information
     projects = load_build_info()
 
     if args.project:
         project = next((p for p in projects if p['project_slug'] == args.project), None)
+        if project is None and language != "java":
+            project = {"project_slug": args.project}
         if project:
             if args.use_container:
                 create_codeql_database_in_container(project['project_slug'], project, args.db_path, args.verbose)
             else:
-                env = setup_environment(project)
-                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path)
+                env = setup_environment(project) if language == "java" else os.environ.copy()
+                if language == "cpp" and project['project_slug'] not in CUSTOM_BUILD_COMMANDS:
+                    print("Warning: C/C++ CodeQL databases usually need a build command. "
+                          "Add one to data/build_cmds.csv if database creation does not see compiled code.")
+                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language)
         else:
             print(f"Project {args.project} not found in CSV file")
     else:
+        if language != "java":
+            raise ValueError("--project is required when creating a non-Java CodeQL database")
         for project in projects:
             if args.use_container:
                 create_codeql_database_in_container(project['project_slug'], project, args.db_path, args.verbose)
             else:
                 env = setup_environment(project)
-                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path)
+                create_codeql_database(project['project_slug'], env, args.db_path, args.sources_path, language=language)
 
 # Location of build_info_local.csv file
 LOCAL_BUILD_INFO = os.path.join(DATA_DIR, "build-info", "build_info_local.csv")
