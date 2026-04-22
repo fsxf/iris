@@ -122,11 +122,50 @@ Sink ({sink_msg}):
 
 {context}\
 """
+
+POSTHOC_FILTER_NATIVE_SYSTEM_PROMPT = """\
+You are an expert in detecting security vulnerabilities. \
+You are given the starting point (source) and the ending point (sink) of a dataflow path in a {language} project that may be a potential vulnerability. \
+Analyze the given taint source and sink and predict whether the given dataflow can be part of a vulnerability or not, and store it as a boolean in "is_vulnerable". \
+The source must represent data that can be controlled by an attacker or an untrusted external actor, such as request parameters, command-line arguments, environment variables, file contents, network input, or public API parameters that may receive downstream user input. \
+The sink must be a security-sensitive operation for the target CWE, and the dataflow should be considered vulnerable if the source can reach the sink without sufficient validation, sanitization, escaping, allowlisting, or other effective defense. \
+If the given source or sink do not satisfy the above criteria, mark the result as NOT VULNERABLE. \
+Please provide a very short explanation associated with the verdict. \
+Assume that the summarized intermediate path has no sanitizer unless the shown code clearly indicates one.
+
+Answer in JSON object with the following format:
+
+{{ "explanation": <YOUR EXPLANATION>,
+  "source_is_false_positive": <true or false>,
+  "sink_is_false_positive": <true or false>,
+  "is_vulnerable": <true or false> }}
+
+Do not include anything else in the response.\
+"""
+
+POSTHOC_FILTER_NATIVE_USER_PROMPT = """\
+Analyze the following dataflow path in a {language} project and predict whether it contains a {cwe_description} vulnerability ({cwe_id}), or a relevant vulnerability.
+{hint}
+{language_hint}
+
+Source ({source_msg}):
+```
+{source}
+```
+
+Steps:
+{intermediate_steps}
+
+Sink ({sink_msg}):
+```
+{sink}
+```\
+"""
 # The key should be the CWE number without any string prefixes.
 # The value should be sentences describing more specific details for detecting the CWE.
 POSTHOC_FILTER_HINTS = {
     "022": "Note: please be careful about defensing against absolute paths and \"..\" paths. Just canonicalizing paths might not be sufficient for the defense.",
-    "078": "Note that other than typical Runtime.exec which is directly executing command, using Java Reflection to create dynamic objects with unsanitized inputs might also cause OS Command injection vulnerability. This includes deserializing objects from untrusted strings and similar functionalities. Writing to config files about library data may also induce unwanted execution of OS commands.",
+    "078": "For OS command injection, check whether untrusted input reaches command execution APIs, shell invocations, process creation APIs, dynamic execution helpers, or command strings built through concatenation/formatting without strict allowlisting or escaping. For Java specifically, Runtime.exec, ProcessBuilder, reflection-based execution, and unsafe deserialization patterns may also be relevant.",
     "079": "Please be careful about reading possibly tainted HTML input. During sanitization, do not assume the sanitization to be sufficient.",
     "094": "Please note that dubious error messages can sometimes be handled by downstream code for execution, resulting in CWE-094 vulnerability. Injection of malicious values might lead to arbitrary code execution as well.",
     "089": "Please be careful about reading possibly tainted SQL input. Look for SQL queries that are constructed using string concatenation or similar methods without proper sanitization.",
@@ -136,6 +175,11 @@ POSTHOC_FILTER_HINTS = {
     "352": "Check if the JSONP callback parameter is validated or restricted. Unchecked callback parameters may allow attackers to inject arbitrary JavaScript, leading to CSRF or data theft.",
     "611": "Check if a default entity resolver is enabled, and if there is a Document Type Definition (DTD). The DTD may include arbitrary HTTP requests that the server may execute. Be careful with deserialization of XML-derived objects.",
     "295": "If certificate pinning is being used, ensure that all relevant properties of the certificate are fully validated before the certificate is pinned, including the hostname. Always verify the full certificate chain."
+}
+
+POSTHOC_FILTER_LANGUAGE_HINTS = {
+    "python": "Language note: for Python, common untrusted sources include web framework request parameters and bodies, sys.argv, environment variables, file input, network input, and public API parameters. Common defenses include strict allowlists, safe framework APIs, escaping, parameterized queries, path normalization plus containment checks, and disabling dangerous parser or deserialization features.",
+    "cpp": "Language note: for C/C++, common untrusted sources include argv, getenv, stdin, files, sockets, CGI parameters, and buffers filled from external input. Common defenses include bounds checks, allowlists, canonicalization plus containment checks, escaping, parameterized APIs, safe allocation sizes, and avoiding dangerous C library calls.",
 }
 
 SNIPPET_CONTEXT_SIZE = 4

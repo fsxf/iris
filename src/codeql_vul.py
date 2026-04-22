@@ -36,6 +36,7 @@ from src.codeql_queries import QL_SINK_BODY_ENTRY, QL_SINK_ARG_NAME_ENTRY, QL_SI
 
 from src.modules.codeql_query_runner import CodeQLQueryRunner
 from src.modules.evaluation_pipeline import EvaluationPipeline
+from src.modules.native_contextual_analysis_pipeline import NativeContextualAnalysisPipeline
 
 
 CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL$")
@@ -75,7 +76,13 @@ class CodeQLSAPipeline:
             language: str = "java",
             evaluation_only: bool = False,
             skip_evaluation: bool = False,
-            overwrite: bool = False
+            overwrite: bool = False,
+            llm_posthoc_filter: bool = False,
+            posthoc_filter_only: bool = False,
+            llm: str = "deepseek-chat",
+            posthoc_batch_size: int = 1,
+            seed: int = 1234,
+            posthoc_test_run: bool = False,
     ):
         # Store basic information
         self.project_name = project_name
@@ -85,6 +92,12 @@ class CodeQLSAPipeline:
         self.evaluation_only = evaluation_only
         self.skip_evaluation = skip_evaluation or self.language != "java"
         self.overwrite = overwrite
+        self.llm_posthoc_filter = llm_posthoc_filter
+        self.posthoc_filter_only = posthoc_filter_only
+        self.llm = llm
+        self.posthoc_batch_size = posthoc_batch_size
+        self.seed = seed
+        self.posthoc_test_run = posthoc_test_run
 
         # Setup logger
         self.master_logger = Logger(f"{IRIS_ROOT_DIR}/log")
@@ -128,6 +141,7 @@ class CodeQLSAPipeline:
         self.query_output_result_sarif_path = f"{self.query_output_path}/results.sarif"
         self.query_output_result_csv_path = f"{self.query_output_path}/results.csv"
         self.final_output_json_path = f"{self.query_output_path}/results.json"
+        self.native_posthoc_filtering_output_path = f"{self.query_output_path}/posthoc-filter"
 
         # Function and Class locations
         self.func_locs_path = f"{self.project_output_path}/fetch_func_locs/results.csv"
@@ -198,14 +212,41 @@ class CodeQLSAPipeline:
         eval_pipeline = self.build_evaluation_pipeline()
         eval_pipeline.run_vanilla_only()
 
+    def build_native_posthoc_pipeline(self):
+        return NativeContextualAnalysisPipeline(
+            query=self.query,
+            language=self.language,
+            cwe_id=self.cwe_id,
+            query_output_result_sarif_path=self.query_output_result_sarif_path,
+            posthoc_filtering_output_path=self.native_posthoc_filtering_output_path,
+            project_source_code_dir=self.project_source_code_dir,
+            project_logger=self.master_logger,
+            llm=self.llm,
+            batch_size=self.posthoc_batch_size,
+            overwrite=self.overwrite,
+            seed=self.seed,
+            test_run=self.posthoc_test_run,
+        )
+
+    def query_llm_for_native_posthoc_filtering(self):
+        if self.language == "java":
+            self.master_logger.error("==> Native posthoc filtering is intended for non-Java native CodeQL runs; aborting"); exit(1)
+        self.master_logger.info("==> Stage 3: Querying LLM for native posthoc filtering...")
+        posthoc_pipeline = self.build_native_posthoc_pipeline()
+        posthoc_pipeline.run()
+
     def run(self):
         if self.evaluation_only:
             if self.skip_evaluation:
                 self.master_logger.error("==> Evaluation is currently only supported for the Java CWE-Bench pipeline; aborting"); exit(1)
             self.evaluate_result()
+        elif self.posthoc_filter_only:
+            self.query_llm_for_native_posthoc_filtering()
         else:
             self.run_codeql_query()
             self.evaluate_result()
+            if self.llm_posthoc_filter:
+                self.query_llm_for_native_posthoc_filtering()
 
 
 if __name__ == '__main__':
@@ -217,6 +258,17 @@ if __name__ == '__main__':
                         help="Skip CWE-Bench-Java evaluation and only emit SARIF/CSV results")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--evaluation-only", action="store_true")
+    parser.add_argument("--llm-posthoc-filter", action="store_true",
+                        help="Run IRIS-style LLM posthoc filtering over native CodeQL SARIF results")
+    parser.add_argument("--posthoc-filter-only", action="store_true",
+                        help="Only run native LLM posthoc filtering over an existing SARIF result")
+    parser.add_argument("--llm", type=str, default="deepseek-chat",
+                        help="LLM used for native posthoc filtering")
+    parser.add_argument("--posthoc-batch-size", type=int, default=1,
+                        help="Batch size / worker count for native posthoc filtering")
+    parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--posthoc-test-run", action="store_true",
+                        help="Build prompts and output empty posthoc results without calling the LLM")
     args = parser.parse_args()
 
     pipeline = CodeQLSAPipeline(
@@ -226,5 +278,11 @@ if __name__ == '__main__':
         evaluation_only=args.evaluation_only,
         skip_evaluation=args.skip_evaluation,
         overwrite=args.overwrite,
+        llm_posthoc_filter=args.llm_posthoc_filter,
+        posthoc_filter_only=args.posthoc_filter_only,
+        llm=args.llm,
+        posthoc_batch_size=args.posthoc_batch_size,
+        seed=args.seed,
+        posthoc_test_run=args.posthoc_test_run,
     )
     pipeline.run()
