@@ -60,21 +60,15 @@ python src/iris.py --query cwe-022wLLM --run-id test --llm qwen2.5-coder-7b perw
 在 `src/models/deepseek.py` 里，远程 API 分支的核心逻辑是：
 
 1. 先判断当前模型名是不是远程模型
-2. 从环境变量里读取 `DEEPSEEK_API_KEY`
-3. 从环境变量里读取 `DEEPSEEK_API_BASE`
-4. 如果没有设置 `DEEPSEEK_API_BASE`，默认使用：
-
-```text
-https://api.deepseek.com
-```
-
-5. 创建 OpenAI 兼容客户端：
+2. 从仓库根目录读取 `cloud_config.json`
+3. 从配置文件里读取 `key`、`url`、`model`
+4. 创建 OpenAI 兼容客户端：
 
 ```python
 OpenAI(api_key=api_key, base_url=base_url)
 ```
 
-6. 复用 IRIS 现有的 prompt 结构，把 `system` 和 `user` 消息发给：
+5. 复用 IRIS 现有的 prompt 结构，把 `system` 和 `user` 消息发给：
 
 ```python
 client.chat.completions.create(...)
@@ -99,33 +93,31 @@ client.chat.completions.create(...)
 
 ## 五、密钥怎么管理
 
-为了避免把 API key 写死在源码里，这次新增了一个本地配置文件：
+为了避免把 API key 写死在源码里，同时方便后续前端配置模型参数，这次统一使用仓库根目录的本地配置文件：
 
-- `.env.deepseek.local`
+- `cloud_config.json`
 
 并且已经把它加入了：
 
 - `.gitignore`
 
-这样可以避免 key 被误提交进仓库。
+这样可以避免 key 被误提交进仓库。仓库里提供了可提交的模板：
 
-这个文件的典型内容是：
+- `cloud_config.example.json`
 
-```bash
-export DEEPSEEK_API_KEY="你的 DeepSeek API Key"
+真实配置文件内容示例：
+
+```json
+{
+  "key": "你的 API Key",
+  "url": "https://api.deepseek.com",
+  "model": "deepseek-chat"
+}
 ```
 
-如果你需要自定义 API 地址，也可以再加一行：
+其中 `key` 是密钥，`url` 是 OpenAI 兼容接口地址，`model` 是实际发送给云端的模型名。
 
-```bash
-export DEEPSEEK_API_BASE="https://api.deepseek.com"
-```
-
-使用时只需要在仓库根目录执行：
-
-```bash
-source .env.deepseek.local
-```
+运行命令里的 `--llm deepseek-chat` 仍然保留，它的作用是让 IRIS 进入 DeepSeek 远程 API 适配器；真正请求云端时使用的是 `cloud_config.json` 里的 `model` 字段。
 
 ## 六、示例项目说明
 
@@ -163,10 +155,16 @@ python scripts/build_codeql_dbs.py --project perwendel__spark_CVE-2018-9159_2.7.
 
 这一步会为该 Java 项目生成后续分析所需的 CodeQL 数据库。
 
-### 第 3 步：加载 DeepSeek API Key
+### 第 3 步：配置云端模型
 
-```bash
-source /home/lifew/iris/.env.deepseek.local
+确认仓库根目录存在 `cloud_config.json`：
+
+```json
+{
+  "key": "你的 API Key",
+  "url": "https://api.deepseek.com",
+  "model": "deepseek-chat"
+}
 ```
 
 ### 第 4 步：运行 IRIS 分析

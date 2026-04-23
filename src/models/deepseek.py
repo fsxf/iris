@@ -4,6 +4,7 @@ from tqdm.contrib.concurrent import thread_map
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import models.config as config
 from utils.mylogger import MyLogger
+import json
 import os
 from models.llm import LLM
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
@@ -24,6 +25,28 @@ _DEEPSEEK_DEFAULT_PARAMS = {
     "max_tokens": 4096,
 }
 
+IRIS_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+CLOUD_CONFIG_PATH = os.path.join(IRIS_ROOT_DIR, "cloud_config.json")
+
+
+def load_cloud_config():
+    if not os.path.exists(CLOUD_CONFIG_PATH):
+        raise ValueError(
+            f"Cloud model config not found: {CLOUD_CONFIG_PATH}. "
+            "Please create cloud_config.json with key, url, and model fields."
+        )
+
+    with open(CLOUD_CONFIG_PATH, "r", encoding="utf-8") as f:
+        cloud_config = json.load(f)
+
+    missing_keys = [key for key in ("key", "url", "model") if not cloud_config.get(key)]
+    if missing_keys:
+        raise ValueError(
+            f"Missing required cloud_config.json field(s): {', '.join(missing_keys)}"
+        )
+    return cloud_config
+
+
 class DeepSeekModel(LLM):
     def __init__(self, model_name, logger: MyLogger, **kwargs):
         self.is_remote_api = model_name.lower() in _REMOTE_MODEL_NAME_MAP
@@ -34,16 +57,11 @@ class DeepSeekModel(LLM):
                 self.log = lambda x: logger.log(x)
             self.kwargs = kwargs
             self.model_name = model_name
-            self.model_id = _REMOTE_MODEL_NAME_MAP[model_name.lower()]
+            cloud_config = load_cloud_config()
+            api_key = cloud_config["key"]
+            base_url = cloud_config["url"]
+            self.model_id = cloud_config["model"]
 
-            if ("deepseek_api_key" in kwargs) and (kwargs["deepseek_api_key"] is not None):
-                api_key = kwargs["deepseek_api_key"]
-            else:
-                api_key = os.getenv("DEEPSEEK_API_KEY")
-            if not api_key:
-                raise ValueError("DEEPSEEK_API_KEY is not set")
-
-            base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
             self.client = OpenAI(api_key=api_key, base_url=base_url)
             self.model_hyperparams = _DEEPSEEK_DEFAULT_PARAMS.copy()
             for key in self.model_hyperparams:

@@ -5,11 +5,13 @@ output/
 **/build
 .vscode/*
 codeql/
+codeql-*.backup/
 data/codeql-dbs/
 data/build-info/
 data/project-sources
 log/
 config.json
+cloud_config.json
 .env.deepseek.local
 .env.*.local
 .miniconda3/

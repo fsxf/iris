@@ -69,9 +69,19 @@ python src/codeql_vul.py \
 
 然后对已有 SARIF 单独做 LLM 后审：
 
-```bash
-source /home/lifew/iris/.env.deepseek.local
+先确认仓库根目录存在 `cloud_config.json`：
 
+```json
+{
+  "key": "你的 API Key",
+  "url": "https://api.deepseek.com",
+  "model": "deepseek-chat"
+}
+```
+
+然后执行：
+
+```bash
 HOME=/home/lifew/iris \
 /home/lifew/iris/.miniconda3/bin/conda run -n iris \
 python src/codeql_vul.py \
@@ -86,8 +96,6 @@ python src/codeql_vul.py \
 也可以在运行 CodeQL 查询后立刻做 LLM 后审：
 
 ```bash
-source /home/lifew/iris/.env.deepseek.local
-
 HOME=/home/lifew/iris \
 /home/lifew/iris/.miniconda3/bin/conda run -n iris \
 python src/codeql_vul.py \
@@ -141,8 +149,6 @@ output/<project>/codeql-cpp/<query>/posthoc-filter/
 Python smoke：
 
 ```bash
-source /home/lifew/iris/.env.deepseek.local
-
 HOME=/home/lifew/iris \
 /home/lifew/iris/.miniconda3/bin/conda run -n iris \
 python src/codeql_vul.py \
@@ -171,8 +177,6 @@ sink = os.system(command)
 C/C++ smoke：
 
 ```bash
-source /home/lifew/iris/.env.deepseek.local
-
 HOME=/home/lifew/iris \
 /home/lifew/iris/.miniconda3/bin/conda run -n iris \
 python src/codeql_vul.py \
@@ -205,5 +209,6 @@ sink = system(command)
 - Python 函数范围使用 `ast` 提取。
 - C/C++ 函数范围优先使用 tree-sitter 提取，能够比正则更好地处理多行函数签名、类成员函数、lambda、模板等语法；如果 tree-sitter 不可用，会回退到轻量启发式匹配。
 - 中间 steps 会保留 SARIF message，例如 `(*access to array)`、`(sprintf output argument)`，这样同一源码行上的不同数据流节点也能区分。
+- 远程模型配置统一从仓库根目录 `cloud_config.json` 读取；真实请求使用其中的 `model` 字段。
 - 当前实现没有破坏 Java 原 posthoc；Java 仍走原 `ContextualAnalysisPipeline`。
 - 后续如果要做 Python / C/C++ 的 LLM source/sink 打标签，可以继续复用这个 native posthoc 的 SARIF 解析、prompt 日志和结果过滤结构。

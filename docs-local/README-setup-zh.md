@@ -117,7 +117,23 @@ IRIS 跑 Java 项目时，需要根据具体项目使用不同版本的 JDK、Ma
 
 ### 4. 安装 CodeQL
 
-建议使用 CodeQL 2.23.2，对应当前仓库更稳定。
+当前本地验证使用 CodeQL 2.25.2。相比原 README 推荐的 2.23.2，新版 bundle 自带更新的 `python-queries`、`cpp-queries` 和 `java-queries`，可以覆盖更多 CodeQL 原生查询。
+
+当前已验证的本地版本信息：
+
+```text
+CodeQL command-line toolchain release 2.25.2
+python-queries: 1.8.0
+cpp-queries: 1.6.0
+java-queries: 1.11.0
+java-all: 9.0.3
+```
+
+如果替换 CodeQL 版本，需要同步确认 `src/config.py` 中的 `CODEQL_QUERY_VERSION` 是否匹配新版 `codeql/qlpacks/codeql/java-all/<version>`。当前已设置为：
+
+```text
+CODEQL_QUERY_VERSION = "9.0.3"
+```
 
 下载 CodeQL bundle 后，把它解压到仓库根目录，形成：
 
@@ -144,36 +160,27 @@ export PATH="$PWD/codeql:$PATH"
 - `deepseek-chat`
 - `deepseek-reasoner`
 
-### 1. 配置 API Key
+### 1. 配置云端模型
 
 建议在仓库根目录新建一个本地文件：
 
-```bash
-.env.deepseek.local
+```text
+cloud_config.json
 ```
 
 内容示例：
 
-```bash
-export DEEPSEEK_API_KEY="你的 DeepSeek API Key"
+```json
+{
+  "key": "你的 API Key",
+  "url": "https://api.deepseek.com",
+  "model": "deepseek-chat"
+}
 ```
 
-如果你需要自定义接口地址，也可以增加：
+其中 `key` 是密钥，`url` 是 OpenAI 兼容接口地址，`model` 是实际发送给云端的模型名。
 
-```bash
-export DEEPSEEK_API_BASE="https://api.deepseek.com"
-```
-
-使用前加载：
-
-```bash
-source .env.deepseek.local
-```
-
-注意：
-
-- 不要把真实 key 写进源码
-- 不要把 `.env.deepseek.local` 上传到 GitHub
+运行命令里的 `--llm deepseek-chat` 仍然保留，它的作用是让 IRIS 进入 DeepSeek 远程 API 适配器；真正请求云端时使用的是 `cloud_config.json` 里的 `model` 字段。
 
 ## 六、如何跑通 README 里的示例项目
 
@@ -210,11 +217,9 @@ python scripts/build_codeql_dbs.py --project perwendel__spark_CVE-2018-9159_2.7.
 
 - `data/codeql-dbs/perwendel__spark_CVE-2018-9159_2.7.1/`
 
-### 第 3 步：加载 DeepSeek 密钥
+### 第 3 步：确认云端模型配置
 
-```bash
-source .env.deepseek.local
-```
+确认仓库根目录存在 `cloud_config.json`，并且包含 `key`、`url`、`model` 三个字段。
 
 ### 第 4 步：运行 IRIS 分析
 

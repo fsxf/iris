@@ -32,7 +32,7 @@ DATA_DIR = f"{IRIS_ROOT_DIR}/data"
 
 DEP_CONFIGS = f"{IRIS_ROOT_DIR}/dep_configs.json"
 
-# this must be changed when the CodeQL query version is updated
-# CODEQL_QUERY_VERSION is the version of the CodeQL queries used in Iris.
-# This values should match qlpacks/codeql/java-queries/{CODEQL_QUERY_VERSION}
-CODEQL_QUERY_VERSION = "1.8.1"
+# this must be changed when the CodeQL bundle is updated
+# CODEQL_QUERY_VERSION is the version of the CodeQL Java library pack used in Iris.
+# This value should match qlpacks/codeql/java-all/{CODEQL_QUERY_VERSION}
+CODEQL_QUERY_VERSION = "9.0.3"
