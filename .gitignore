@@ -8,7 +8,6 @@ codeql/
 codeql-*.backup/
 data/codeql-dbs/
 data/build-info/
-data/project-sources
 log/
 config.json
 cloud_config.json
