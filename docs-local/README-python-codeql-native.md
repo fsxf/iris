@@ -122,7 +122,7 @@ Python 路线会：
   使用其中的 cwe_id
 
 如果 query 不在 queries.py 里：
-  只要名字匹配 cwe-数字wCodeQL
+  只要名字匹配 cwe-数字wCodeQL 或 cwe-数字wCodeQLExp
   就自动解析 CWE 编号
   再根据 language 去找对应 CodeQL 查询目录
 ```
@@ -397,7 +397,10 @@ codeql/qlpacks/codeql/python-queries/<version>/Security/CWE-078/
 
 暂时不处理：
 
-- `experimental/Security/...`
 - 一键运行完整 CodeQL suite
 - Python 版 LLM source/sink/parameter 标注
-- Python 版 posthoc filtering
+
+experimental 查询处理规则：
+
+- `cwe-XXXwCodeQL`：优先使用稳定目录；如果稳定目录不存在，会自动 fallback 到 `experimental/Security/...`。
+- `cwe-XXXwCodeQLExp`：明确使用 `experimental/Security/...`，适合想强制跑实验查询的场景。

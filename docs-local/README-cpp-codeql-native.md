@@ -20,7 +20,9 @@ C/C++ 和 Python 不一样。Python 通常可以直接扫描源码创建数据�
 - `scripts/build_codeql_dbs.py` 新增 `--language cpp`，并新增 `--command` 用于传入 C/C++ 构建命令。
 - `scripts/build_codeql_dbs.py` 新增 `--build-mode none`，当 C/C++ 未提供构建命令时默认使用 CodeQL buildless 建库。
 - `src/codeql_vul.py` 新增 `--language cpp`，输出目录为 `output/<project>/codeql-cpp/<query>/`。
-- `src/codeql_vul.py` 支持未写入 `queries.py` 的 `cwe-XXXwCodeQL` 查询名，会自动解析 CWE id 并寻找 CodeQL 自带查询目录。
+- `src/codeql_vul.py` 支持未写入 `queries.py` 的 `cwe-XXXwCodeQL` 和 `cwe-XXXwCodeQLExp` 查询名，会自动解析 CWE id 并寻找 CodeQL 自带查询目录。
+- `cwe-XXXwCodeQL` 会优先使用稳定查询目录；如果稳定目录不存在，会自动 fallback 到 `experimental/Security/...`。
+- `cwe-XXXwCodeQLExp` 会明确使用 experimental 查询目录。
 
 ## 环境准备
 
@@ -115,6 +117,30 @@ python src/codeql_vul.py \
   --language cpp \
   --overwrite \
   <project_slug>
+```
+
+如果某个 CWE 只有 experimental 查询，也可以直接使用普通命令，让程序自动 fallback：
+
+```bash
+HOME=/home/lifew/iris \
+/home/lifew/iris/.miniconda3/bin/conda run -n iris \
+python src/codeql_vul.py \
+  --query cwe-415wCodeQL \
+  --language cpp \
+  --overwrite \
+  <project_slug>
+```
+
+日志中会出现类似提示：
+
+```text
+Stable CodeQL query not found; falling back to experimental query: ...
+```
+
+如果想强制使用 experimental 查询，可以使用：
+
+```bash
+--query cwe-415wCodeQLExp
 ```
 
 ## 当前 smoke 验证

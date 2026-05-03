@@ -12,6 +12,13 @@ class CodeQLLanguageConfig:
     cwe_query_path_template: str
 
 
+@dataclass(frozen=True)
+class CodeQLQueryResolution:
+    query_dir: str
+    experimental: bool
+    fallback_to_experimental: bool
+
+
 LANGUAGE_CONFIGS = {
     "java": CodeQLLanguageConfig(
         name="java",
@@ -89,3 +96,40 @@ def get_cwe_query_dir(codeql_dir: str, language: str, cwe_id: str, experimental:
     exp = "experimental/" if experimental else ""
     relative_query_path = config.cwe_query_path_template.format(exp=exp, cwe_id=cwe_id)
     return os.path.join(codeql_dir, "qlpacks", "codeql", config.query_pack, version, relative_query_path)
+
+
+def resolve_cwe_query_dir(
+        codeql_dir: str,
+        language: str,
+        cwe_id: str,
+        experimental: bool = False,
+        allow_experimental_fallback: bool = True,
+) -> CodeQLQueryResolution:
+    query_dir = get_cwe_query_dir(codeql_dir, language, cwe_id, experimental)
+    if os.path.exists(query_dir):
+        return CodeQLQueryResolution(
+            query_dir=query_dir,
+            experimental=experimental,
+            fallback_to_experimental=False,
+        )
+
+    if experimental or not allow_experimental_fallback:
+        return CodeQLQueryResolution(
+            query_dir=query_dir,
+            experimental=experimental,
+            fallback_to_experimental=False,
+        )
+
+    experimental_query_dir = get_cwe_query_dir(codeql_dir, language, cwe_id, experimental=True)
+    if os.path.exists(experimental_query_dir):
+        return CodeQLQueryResolution(
+            query_dir=experimental_query_dir,
+            experimental=True,
+            fallback_to_experimental=True,
+        )
+
+    return CodeQLQueryResolution(
+        query_dir=query_dir,
+        experimental=False,
+        fallback_to_experimental=False,
+    )

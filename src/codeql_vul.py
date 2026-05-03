@@ -20,7 +20,7 @@ NEUROSYMSA_ROOT_DIR = os.path.abspath(f"{THIS_SCRIPT_DIR}/../")
 sys.path.append(NEUROSYMSA_ROOT_DIR)
 
 from src.config import CODEQL_DIR, CODEQL_DB_PATH, OUTPUT_DIR, ALL_METHOD_INFO_DIR, PROJECT_SOURCE_CODE_DIR, CVES_MAPPED_W_COMMITS_DIR, IRIS_ROOT_DIR
-from src.language_config import get_cwe_query_dir, get_language_config, normalize_language
+from src.language_config import get_language_config, normalize_language, resolve_cwe_query_dir
 
 
 from src.logger import Logger
@@ -39,7 +39,7 @@ from src.modules.evaluation_pipeline import EvaluationPipeline
 from src.modules.native_contextual_analysis_pipeline import NativeContextualAnalysisPipeline
 
 
-CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL$")
+CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL(?P<exp>Exp)?$")
 
 
 def resolve_codeql_query_metadata(query: str) -> dict:
@@ -63,7 +63,7 @@ def resolve_codeql_query_metadata(query: str) -> dict:
     return {
         "name": query,
         "cwe_id": match.group("cwe_id"),
-        "experimental": False,
+        "experimental": bool(match.group("exp")),
         "registered": False,
     }
 
@@ -150,7 +150,14 @@ class CodeQLSAPipeline:
     def run_codeql_query(self):
         self.master_logger.info("==> Stage 1: Running CodeQL queries...")
 
-        query_dir = get_cwe_query_dir(CODEQL_DIR, self.language, self.cwe_id, self.experimental)
+        query_resolution = resolve_cwe_query_dir(CODEQL_DIR, self.language, self.cwe_id, self.experimental)
+        query_dir = query_resolution.query_dir
+        if query_resolution.fallback_to_experimental:
+            self.master_logger.info(
+                f"  ==> Stable CodeQL query not found; falling back to experimental query: {query_dir}"
+            )
+        elif query_resolution.experimental:
+            self.master_logger.info(f"  ==> Using experimental CodeQL query: {query_dir}")
         if not os.path.exists(query_dir):
             self.master_logger.error(f"==> Cannot find CodeQL query directory `{query_dir}`; aborting"); exit(1)
 
