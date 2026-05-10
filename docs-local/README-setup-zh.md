@@ -6,7 +6,7 @@
 
 - Linux 或 WSL Ubuntu 环境
 - 需要运行 IRIS 的 Java 流程
-- 使用 DeepSeek 远程 API 作为 LLM 后端
+- 使用通用云端 LLM API 作为 LLM 后端
 
 如果你使用的是 macOS，整体思路相同，但 JDK、Maven、Gradle 和 CodeQL 的安装路径需要按你自己的系统调整。
 
@@ -37,7 +37,7 @@
   - Gradle
 - 一个可用的 LLM 后端
 
-这份仓库已经支持使用 DeepSeek 远程 API，因此不强制要求你在本地部署大模型。
+这份仓库已经支持使用通用云端 LLM API，因此不强制要求你在本地部署大模型。
 
 ## 三、推荐的目录组织方式
 
@@ -147,18 +147,17 @@ codeql/codeql
 export PATH="$PWD/codeql:$PATH"
 ```
 
-## 五、DeepSeek 远程 API 配置
+## 五、云端 LLM 配置
 
-这份仓库已经支持通过 DeepSeek 远程 API 运行 IRIS，不需要本地部署 7B 模型。
+这份仓库已经支持通过 OpenAI-compatible 云端 API 运行 IRIS，不需要本地部署 7B 模型。
 
 相关实现位于：
 
-- `src/models/deepseek.py`
+- `src/models/cloud.py`
 
-支持的远程模型名包括：
+远程入口名是：
 
-- `deepseek-chat`
-- `deepseek-reasoner`
+- `cloud`
 
 ### 1. 配置云端模型
 
@@ -174,13 +173,20 @@ cloud_config.json
 {
   "key": "你的 API Key",
   "url": "https://api.deepseek.com",
-  "model": "deepseek-chat"
+  "model": "deepseek-v4-pro",
+  "retries": 3
 }
 ```
 
-其中 `key` 是密钥，`url` 是 OpenAI 兼容接口地址，`model` 是实际发送给云端的模型名。
+其中 `key` 是密钥，`url` 是 OpenAI 兼容接口地址，`model` 是实际发送给云端的模型名，`retries` 是可选重试次数。
 
-运行命令里的 `--llm deepseek-chat` 仍然保留，它的作用是让 IRIS 进入 DeepSeek 远程 API 适配器；真正请求云端时使用的是 `cloud_config.json` 里的 `model` 字段。
+运行命令里的 `--llm cloud` 作用是让 IRIS 进入云端 API 适配器；真正请求云端时使用的是 `cloud_config.json` 里的 `model` 字段。
+
+更完整说明见：
+
+```text
+docs-local/README-cloud-llm.md
+```
 
 ## 六、如何跑通 README 里的示例项目
 
@@ -226,15 +232,16 @@ python scripts/build_codeql_dbs.py --project perwendel__spark_CVE-2018-9159_2.7.
 ```bash
 python src/iris.py \
   --query cwe-022wLLM \
-  --run-id test-deepseek \
-  --llm deepseek-chat \
+  --run-id test-cloud \
+  --llm cloud \
   perwendel__spark_CVE-2018-9159_2.7.1
 ```
 
 这里和原 README 的区别在于：
 
 - 原 README 使用本地 `qwen2.5-coder-7b`
-- 这里改为使用远程 `deepseek-chat`
+- 这里改为使用远程 `cloud`，真实模型由 `cloud_config.json` 的 `model` 字段决定
+- 如果之前某次 LLM 标签返回异常或结果不可信，重新跑时可以加 `--overwrite-llm-cache`，避免复用旧标签缓存
 
 ## 七、运行结果在哪里看
 
@@ -244,29 +251,29 @@ python src/iris.py \
 
 以示例项目为例，就是：
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/`
 
 最重要的产物包括：
 
 ### 1. 总日志
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/log/`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/log/`
 
 ### 2. 原始 CodeQL 结果
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/cwe-022wLLM/results.csv`
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/cwe-022wLLM/results.sarif`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/cwe-022wLLM/results.csv`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/cwe-022wLLM/results.sarif`
 
 ### 3. LLM 标注结果
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/analysis/cwe-022wLLM/`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/analysis/cwe-022wLLM/`
 
 ### 4. 自动生成的 CodeQL 查询
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/myqueries/cwe-022wLLM/`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/myqueries/cwe-022wLLM/`
 
 ### 5. 最终汇总结果
 
-- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-deepseek/cwe-022wLLM-final/results.json`
+- `output/perwendel__spark_CVE-2018-9159_2.7.1/test-cloud/cwe-022wLLM-final/results.json`
 
 如果只是想快速看这次分析的最终统计，这个 `results.json` 最值得先看。

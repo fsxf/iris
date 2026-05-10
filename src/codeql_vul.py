@@ -39,7 +39,8 @@ from src.modules.evaluation_pipeline import EvaluationPipeline
 from src.modules.native_contextual_analysis_pipeline import NativeContextualAnalysisPipeline
 
 
-CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL(?P<exp>Exp)?$")
+CODEQL_QUERY_NAME_RE = re.compile(r"^cwe-(?P<cwe_id>\d{2,4})wCodeQL(?P<variant>Exp|Custom)?$")
+CUSTOM_CODEQL_QUERY_ROOT = os.path.join(IRIS_ROOT_DIR, "src", "native-codeql-queries")
 
 
 def resolve_codeql_query_metadata(query: str) -> dict:
@@ -63,9 +64,14 @@ def resolve_codeql_query_metadata(query: str) -> dict:
     return {
         "name": query,
         "cwe_id": match.group("cwe_id"),
-        "experimental": bool(match.group("exp")),
+        "experimental": match.group("variant") == "Exp",
+        "custom": match.group("variant") == "Custom",
         "registered": False,
     }
+
+
+def get_custom_codeql_query_dir(language: str, cwe_id: str) -> str:
+    return os.path.join(CUSTOM_CODEQL_QUERY_ROOT, normalize_language(language), f"cwe-{cwe_id}")
 
 
 class CodeQLSAPipeline:
@@ -79,7 +85,7 @@ class CodeQLSAPipeline:
             overwrite: bool = False,
             llm_posthoc_filter: bool = False,
             posthoc_filter_only: bool = False,
-            llm: str = "deepseek-chat",
+            llm: str = "cloud",
             posthoc_batch_size: int = 1,
             seed: int = 1234,
             posthoc_test_run: bool = False,
@@ -110,6 +116,7 @@ class CodeQLSAPipeline:
             self.master_logger.error(f"==> {e}; aborting"); exit(1)
         self.cwe_id = self.query_metadata["cwe_id"]
         self.experimental = self.query_metadata["experimental"]
+        self.custom_query = self.query_metadata.get("custom", False)
 
         if not self.skip_evaluation:
             # Load some basic information, such as commits and fixes related to the CVE.
@@ -150,14 +157,18 @@ class CodeQLSAPipeline:
     def run_codeql_query(self):
         self.master_logger.info("==> Stage 1: Running CodeQL queries...")
 
-        query_resolution = resolve_cwe_query_dir(CODEQL_DIR, self.language, self.cwe_id, self.experimental)
-        query_dir = query_resolution.query_dir
-        if query_resolution.fallback_to_experimental:
-            self.master_logger.info(
-                f"  ==> Stable CodeQL query not found; falling back to experimental query: {query_dir}"
-            )
-        elif query_resolution.experimental:
-            self.master_logger.info(f"  ==> Using experimental CodeQL query: {query_dir}")
+        if self.custom_query:
+            query_dir = get_custom_codeql_query_dir(self.language, self.cwe_id)
+            self.master_logger.info(f"  ==> Using custom CodeQL query directory: {query_dir}")
+        else:
+            query_resolution = resolve_cwe_query_dir(CODEQL_DIR, self.language, self.cwe_id, self.experimental)
+            query_dir = query_resolution.query_dir
+            if query_resolution.fallback_to_experimental:
+                self.master_logger.info(
+                    f"  ==> Stable CodeQL query not found; falling back to experimental query: {query_dir}"
+                )
+            elif query_resolution.experimental:
+                self.master_logger.info(f"  ==> Using experimental CodeQL query: {query_dir}")
         if not os.path.exists(query_dir):
             self.master_logger.error(f"==> Cannot find CodeQL query directory `{query_dir}`; aborting"); exit(1)
 
@@ -269,7 +280,7 @@ if __name__ == '__main__':
                         help="Run IRIS-style LLM posthoc filtering over native CodeQL SARIF results")
     parser.add_argument("--posthoc-filter-only", action="store_true",
                         help="Only run native LLM posthoc filtering over an existing SARIF result")
-    parser.add_argument("--llm", type=str, default="deepseek-chat",
+    parser.add_argument("--llm", type=str, default="cloud",
                         help="LLM used for native posthoc filtering")
     parser.add_argument("--posthoc-batch-size", type=int, default=1,
                         help="Batch size / worker count for native posthoc filtering")

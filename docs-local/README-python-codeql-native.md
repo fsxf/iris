@@ -17,12 +17,24 @@ Python 源码
 -> SARIF / CSV 结果
 ```
 
-这一版不经过 IRIS 的 LLM source/sink/parameter 标注流程，也不会生成：
+这一条路线不经过 IRIS 的 LLM source/sink/parameter 标注流程，也不会生成：
 
 - `MySources.qll`
 - `MySinks.qll`
 - `MySummaries.qll`
 - `specs.model.yml`
+
+如果要看 Python / C/C++ 已经接入的 IRIS 风格 LLM 打标签路线，请看：
+
+```text
+docs-local/README-llm-routes.md
+```
+
+如果要看项目内自定义 CodeQL 查询路线，请看：
+
+```text
+docs-local/README-custom-codeql-queries.md
+```
 
 ## 一、为什么先走原生 CodeQL 查询
 
@@ -41,7 +53,7 @@ IRIS 原来的主流程主要针对 Java，尤其是下面这些部分和 Java �
 ```text
 先复用 CodeQL 官方 Python 安全查询
 先打通 Python 建库、查询、SARIF/CSV 输出
-后续再逐步补 LLM 标注和 posthoc filtering
+再逐步补 LLM 标注和 posthoc filtering
 ```
 
 ## 二、这次做了哪些改动

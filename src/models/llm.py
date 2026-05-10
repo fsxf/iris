@@ -240,7 +240,10 @@ class LLM:
         elif model_name.lower().startswith("gemma"):
             from models.google import GoogleModel
             model=GoogleModel(model_name=model_name, logger=logger, **kwargs)
-        elif model_name.lower().startswith("deepseek"):
+        elif model_name.lower() == "cloud":
+            from models.cloud import CloudModel
+            model=CloudModel(model_name=model_name, logger=logger, **kwargs)
+        elif model_name.lower().startswith("deepseekcoder"):
             from models.deepseek import DeepSeekModel
             model=DeepSeekModel(model_name=model_name, logger=logger, **kwargs)
         elif model_name.lower().startswith("qwen"):

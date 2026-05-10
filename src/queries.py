@@ -1,40 +1,82 @@
 """
- Use the following format when adding a key to the QUERIES dictionary:
-   "query_name": {
-     "name": "",
-     "type": "cwe-query",
-     "cwe_id": "CWE-[CWE number]", - add 0 in front of double digit CWEs. 
-     "cwe_id_short": "[CWE number]", - short version of the CWE number. Remove 0 in front of double digit CWEs.
-     "cwe_id_tag": "CWE-[CWE number]", - cwe_id but without the 0 in front of double digit CWEs.
-     "type": "cwe-query",
-     "desc": "", - short description of the CWE
-     "queries": [
-       "cwe-queries/cwe-[CWE number]/cwe-[CWE number]wLLM.ql", - path to query file
-       "cwe-queries/cwe-[CWE number]/*.qll" - path to  *.qll files used.
-     ],
-     "prompts": {
-       "cwe-id": "CWE-[CWE number]" - same cwe_id as above,
-       "desc": "", - same short description as above
-       "long_desc": \, - long description of the CWE which includes definition and attack pattern. 
-       "examples": [ - list of examples of source, sink, and taint-propagator methods.
-         {
-           "package": "",
-           "class": "",
-           "method": "",
-           "signature": "",
-             "sink_args": [], - name of parameter variable in the signature above 
-           "type": "sink",
-         },
-         {
-           "package": "",
-           "class": "",
-           "method": "",
-           "signature": "",
-           "type": "source",
-         }
-       ]
-     },
- """
+Registry format for QUERIES.
+
+IRIS currently supports two broad query styles:
+
+1. IRIS-style LLM queries (`type: "cwe-query"`)
+   These collect project APIs/function parameters, ask an LLM to label
+   sources/sinks/taint-propagators, generate project-specific QLL files, and
+   then run a CWE-specific CodeQL query.
+
+2. Native CodeQL queries (`type: "codeql-query"`)
+   These run official or project-local CodeQL queries directly, optionally
+   falling back to experimental or custom query packs.
+
+Recommended shape for a multi-language IRIS-style query:
+
+  "cwe-XXXwLLM": {
+    "name": "cwe-XXXwLLM",
+    "cwe_id": "XXX",             # zero-padded, for example "078"
+    "cwe_id_short": "XX",        # non-padded, for example "78"
+    "cwe_id_tag": "CWE-XX",
+    "type": "cwe-query",
+    "desc": "Short CWE description",
+
+    # Backward-compatible Java default. Existing Java entries still use this.
+    # New language-specific entries should prefer the `languages` block below.
+    "queries": [
+      "cwe-queries/java/cwe-XXX/main-query.ql",
+      "cwe-queries/java/cwe-XXX/supporting-query.qll",
+    ],
+
+    # CWE-level information shared across languages. Stage 3 API labelling uses
+    # `desc` and `long_desc` for Python/C++ as well as Java. `examples` remains
+    # the Java/default examples unless a language overrides them.
+    "prompts": {
+      "cwe_id": "CWE-XXX",
+      "desc": "Short CWE description",
+      "long_desc": "Long CWE definition and attack pattern",
+      "examples": [
+        {
+          "package": "...",
+          "class": "...",
+          "method": "...",
+          "signature": "...",
+          "sink_args": ["p0"],
+          "type": "source | sink | taint-propagator",
+        }
+      ],
+    },
+
+    # Language-specific query files and prompt examples. This is where Python,
+    # C/C++, and future languages should be added without duplicating the shared
+    # CWE description above.
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-XXX/main-query.ql",
+          "cwe-queries/python/cwe-XXX/supporting-query.qll",
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [...],
+          "function_param_hint": "CWE-specific hint for parameter labelling",
+        },
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-XXX/main-query.ql",
+          "cwe-queries/cpp/cwe-XXX/supporting-query.qll",
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [...],
+          "function_param_hint": "CWE-specific hint for parameter labelling",
+        },
+      },
+    },
+  }
+"""
 QUERIES = {
   "cwe-089wLLM": {
     "name": "cwe-089wLLM",
@@ -44,10 +86,108 @@ QUERIES = {
     "type": "cwe-query",
     "desc": "SQL Injection via string concatenation",
     "queries": [
-      "cwe-queries/cwe-089/cwe-089wLLM.ql",
-      "cwe-queries/cwe-089/MySqlInjectionQuery.qll",
-      "cwe-queries/cwe-089/MySqlConcatenatedLib.qll"
+      "cwe-queries/java/cwe-089/cwe-089wLLM.ql",
+      "cwe-queries/java/cwe-089/MySqlInjectionQuery.qll",
+      "cwe-queries/java/cwe-089/MySqlConcatenatedLib.qll"
       ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-089/cwe-089wLLM.ql",
+          "cwe-queries/python/cwe-089/MySqlInjectionQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "input",
+              "signature": "input(prompt)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "sqlite3",
+              "class": "Cursor",
+              "method": "execute",
+              "signature": "cursor.execute(sql, parameters=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "pymysql",
+              "class": "Cursor",
+              "method": "execute",
+              "signature": "cursor.execute(query, args=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "str",
+              "class": "str",
+              "method": "format",
+              "signature": "str.format(*args, **kwargs)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-089 SQL injection, focus on parameters that can influence SQL query text passed to execute/query APIs. Do not treat parameters used only as bound query parameters as vulnerable sinks."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-089/cwe-089wLLM.ql",
+          "cwe-queries/cpp/cwe-089/MySqlInjectionQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "getenv",
+              "signature": "getenv(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "sqlite3",
+              "class": "function",
+              "method": "sqlite3_exec",
+              "signature": "sqlite3_exec(db;sql;callback;arg;errmsg)",
+              "sink_args": ["p1"],
+              "type": "sink",
+            },
+            {
+              "package": "mysqlclient",
+              "class": "function",
+              "method": "mysql_query",
+              "signature": "mysql_query(mysql;query)",
+              "sink_args": ["p1"],
+              "type": "sink",
+            },
+            {
+              "package": "libpq",
+              "class": "function",
+              "method": "PQexec",
+              "signature": "PQexec(conn;query)",
+              "sink_args": ["p1"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "sprintf",
+              "signature": "sprintf(buffer;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-089 SQL injection, focus on parameters that can influence raw SQL query strings passed to sqlite3_exec, mysql_query, PQexec, or similar SQL execution APIs."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-089",
       "desc": "SQL Injection via string concatenation",
@@ -112,10 +252,100 @@ least privilege database access, and error message suppression are also importan
     "cwe_id_tag": "CWE-22",
     "desc": "Path Traversal or Zip Slip",
     "queries": [
-      "cwe-queries/cwe-022/cwe-022wLLM.ql",
-      "cwe-queries/cwe-022/MyTaintedPathQuery.qll",
-      "cwe-queries/cwe-022/PathCreation.qll",
+      "cwe-queries/java/cwe-022/cwe-022wLLM.ql",
+      "cwe-queries/java/cwe-022/MyTaintedPathQuery.qll",
+      "cwe-queries/java/cwe-022/PathCreation.qll",
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-022/cwe-022wLLM.ql",
+          "cwe-queries/python/cwe-022/MyTaintedPathQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "flask",
+              "class": "Request",
+              "method": "args.get",
+              "signature": "request.args.get(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "zipfile",
+              "class": "ZipInfo",
+              "method": "filename",
+              "signature": "ZipInfo.filename",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "open",
+              "signature": "open(file, mode='r')",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "os.path",
+              "class": "module",
+              "method": "join",
+              "signature": "os.path.join(path, *paths)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-022 path traversal, focus on parameters that can influence filesystem paths, archive entry names, directory names, filenames, or paths passed to file open/read/write/extract APIs."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-022/cwe-022wLLM.ql",
+          "cwe-queries/cpp/cwe-022/MyTaintedPathQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "getenv",
+              "signature": "getenv(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "fopen",
+              "signature": "fopen(path;mode)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "posix",
+              "class": "function",
+              "method": "open",
+              "signature": "open(path;flags)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "snprintf",
+              "signature": "snprintf(buffer;size;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-022 path traversal, focus on C/C++ parameters that can influence filenames, directories, archive entry names, or paths passed to fopen, open, filesystem, archive extraction, or similar APIs."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-022",
       "desc": "Path Traversal or Zip Slip",
@@ -170,8 +400,8 @@ directories, and etc.""",
     "desc": "Path Traversal or Zip Slip",
     "type": "cwe-query-ablation",
     "queries": [
-      "cwe-queries/cwe-022/cwe-022wLLMSinksOnly.ql",
-      "cwe-queries/cwe-022/MyTaintedPathQuery.qll",
+      "cwe-queries/java/cwe-022/cwe-022wLLMSinksOnly.ql",
+      "cwe-queries/java/cwe-022/MyTaintedPathQuery.qll",
     ],
   },
   "cwe-022wLLMSourcesOnly": {
@@ -180,8 +410,8 @@ directories, and etc.""",
     "desc": "Path Traversal or Zip Slip",
     "type": "cwe-query-ablation",
     "queries": [
-      "cwe-queries/cwe-022/cwe-022wLLMSourcesOnly.ql",
-      "cwe-queries/cwe-022/MyTaintedPathQuery.qll",
+      "cwe-queries/java/cwe-022/cwe-022wLLMSourcesOnly.ql",
+      "cwe-queries/java/cwe-022/MyTaintedPathQuery.qll",
     ]
   },
   "cwe-022wCodeQL": {
@@ -208,11 +438,101 @@ directories, and etc.""",
     "type": "cwe-query",
     "desc": "OS Command Injection",
     "queries": [
-      "cwe-queries/cwe-078/CommandInjectionRuntimeExecwLLM.ql",
-      "cwe-queries/cwe-078/MyCommandInjectionRuntimeExec.qll",
-      "cwe-queries/cwe-078/MyCommandArguments.qll",
-      "cwe-queries/cwe-078/MyCommandLineQuery.qll",
+      "cwe-queries/java/cwe-078/CommandInjectionRuntimeExecwLLM.ql",
+      "cwe-queries/java/cwe-078/MyCommandInjectionRuntimeExec.qll",
+      "cwe-queries/java/cwe-078/MyCommandArguments.qll",
+      "cwe-queries/java/cwe-078/MyCommandLineQuery.qll",
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-078/cwe-078wLLM.ql",
+          "cwe-queries/python/cwe-078/MyCommandInjectionQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "input",
+              "signature": "input(prompt)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "os",
+              "class": "module",
+              "method": "system",
+              "signature": "os.system(command)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "subprocess",
+              "class": "module",
+              "method": "Popen",
+              "signature": "subprocess.Popen(args, ..., shell=False)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "subprocess",
+              "class": "module",
+              "method": "run",
+              "signature": "subprocess.run(args, ..., shell=False)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+          ],
+          "function_param_hint": "For CWE-078 OS command injection, focus on parameters that can reach command execution APIs, shell invocations, process creation APIs, or command strings built through concatenation/formatting."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-078/cwe-078wLLM.ql",
+          "cwe-queries/cpp/cwe-078/MyCommandInjectionQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "stdlib",
+              "class": "function",
+              "method": "getenv",
+              "signature": "getenv(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "system",
+              "signature": "system(command)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "popen",
+              "signature": "popen(command;type)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "sprintf",
+              "signature": "sprintf(buffer;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-078 OS command injection, focus on C/C++ parameters that may receive user-controlled command strings or arguments, such as argv, network/request buffers, environment-derived values, and wrapper parameters later passed to system, popen, exec-family APIs, or command-building functions."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-078",
       "desc": "OS Command Injection",
@@ -251,6 +571,7 @@ the organization.""",
       ]
     }
   },
+  #消融实验需求
   "cwe-078wLLMSinksOnly": {
     "name": "cwe-078wLLMSinksOnly",
     "cwe_id": "078",
@@ -259,10 +580,10 @@ the organization.""",
     "type": "cwe-query-ablation",
     "desc": "OS Command Injection",
     "queries": [
-      "cwe-queries/cwe-078/CommandInjectionRuntimeExecwLLMSinksOnly.ql",
-      "cwe-queries/cwe-078/MyCommandInjectionRuntimeExec.qll",
-      "cwe-queries/cwe-078/MyCommandArguments.qll",
-      "cwe-queries/cwe-078/MyCommandLineQuery.qll",
+      "cwe-queries/java/cwe-078/CommandInjectionRuntimeExecwLLMSinksOnly.ql",
+      "cwe-queries/java/cwe-078/MyCommandInjectionRuntimeExec.qll",
+      "cwe-queries/java/cwe-078/MyCommandArguments.qll",
+      "cwe-queries/java/cwe-078/MyCommandLineQuery.qll",
     ]
    },
     "cwe-078wLLMSourcesOnly": {
@@ -273,10 +594,10 @@ the organization.""",
     "desc": "OS Command Injection",
     "type": "cwe-query-ablation",
     "queries": [
-      "cwe-queries/cwe-078/CommandInjectionRuntimeExecwLLMSourcesOnly.ql",
-      "cwe-queries/cwe-078/MyCommandInjectionRuntimeExec.qll",
-      "cwe-queries/cwe-078/MyCommandArguments.qll",
-      "cwe-queries/cwe-078/MyCommandLineQuery.qll",
+      "cwe-queries/java/cwe-078/CommandInjectionRuntimeExecwLLMSourcesOnly.ql",
+      "cwe-queries/java/cwe-078/MyCommandInjectionRuntimeExec.qll",
+      "cwe-queries/java/cwe-078/MyCommandArguments.qll",
+      "cwe-queries/java/cwe-078/MyCommandLineQuery.qll",
     ]
    },
   "cwe-078wCodeQL": {
@@ -303,10 +624,10 @@ the organization.""",
     "type": "cwe-query",
     "desc": "Cross-Site Scripting",
     "queries": [
-      "cwe-queries/cwe-079/XSS.ql",
-      "cwe-queries/cwe-079/MyXSS.qll",
-      "cwe-queries/cwe-079/MyXssQuery.qll",
-      "cwe-queries/cwe-079/MyXssLocalQuery.qll",
+      "cwe-queries/java/cwe-079/XSS.ql",
+      "cwe-queries/java/cwe-079/MyXSS.qll",
+      "cwe-queries/java/cwe-079/MyXssQuery.qll",
+      "cwe-queries/java/cwe-079/MyXssLocalQuery.qll",
     ],
     "prompts": {
       "cwe-id": "CWE-079",
@@ -353,10 +674,10 @@ cookie. Logging functions are NOT sinks for XSS attacks.""",
     "type": "cwe-query-ablation",
     "desc": "Cross-Site Scripting",
     "queries": [
-      "cwe-queries/cwe-079/XSSSinksOnly.ql",
-      "cwe-queries/cwe-079/MyXSS.qll",
-      "cwe-queries/cwe-079/MyXssQuery.qll",
-      "cwe-queries/cwe-079/MyXssLocalQuery.qll",
+      "cwe-queries/java/cwe-079/XSSSinksOnly.ql",
+      "cwe-queries/java/cwe-079/MyXSS.qll",
+      "cwe-queries/java/cwe-079/MyXssQuery.qll",
+      "cwe-queries/java/cwe-079/MyXssLocalQuery.qll",
     ]
   },
   "cwe-079wLLMSourcesOnly": {
@@ -367,10 +688,10 @@ cookie. Logging functions are NOT sinks for XSS attacks.""",
     "desc": "Cross-Site Scripting",
     "type": "cwe-query-ablation",
     "queries": [
-      "cwe-queries/cwe-079/XSSSourcesOnly.ql",
-      "cwe-queries/cwe-079/MyXSS.qll",
-      "cwe-queries/cwe-079/MyXssQuery.qll",
-      "cwe-queries/cwe-079/MyXssLocalQuery.qll",
+      "cwe-queries/java/cwe-079/XSSSourcesOnly.ql",
+      "cwe-queries/java/cwe-079/MyXSS.qll",
+      "cwe-queries/java/cwe-079/MyXssQuery.qll",
+      "cwe-queries/java/cwe-079/MyXssLocalQuery.qll",
     ]
   },
   "cwe-079wCodeQL": {
@@ -397,8 +718,8 @@ cookie. Logging functions are NOT sinks for XSS attacks.""",
     "cwe_id_tag": "CWE-502",
     "desc": "Deserialization of Untrusted Data",
     "queries": [
-      "cwe-queries/cwe-502/MyUnsafeDeserialization.ql",
-      "cwe-queries/cwe-502/MyUnsafeDeserializationQuery.qll"
+      "cwe-queries/java/cwe-502/MyUnsafeDeserialization.ql",
+      "cwe-queries/java/cwe-502/MyUnsafeDeserializationQuery.qll"
     ],
     "prompts": {
       "cwe_id": "CWE-502",
@@ -456,10 +777,100 @@ cookie. Logging functions are NOT sinks for XSS attacks.""",
     "desc": "Code Injection",
     "type": "cwe-query",
     "queries": [
-      "cwe-queries/cwe-094/SpelInjection.ql",
-      "cwe-queries/cwe-094/MySpelInjection.qll",
-      "cwe-queries/cwe-094/MySpelInjectionQuery.qll",
+      "cwe-queries/java/cwe-094/SpelInjection.ql",
+      "cwe-queries/java/cwe-094/MySpelInjection.qll",
+      "cwe-queries/java/cwe-094/MySpelInjectionQuery.qll",
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-094/cwe-094wLLM.ql",
+          "cwe-queries/python/cwe-094/MyCodeInjectionQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "input",
+              "signature": "input(prompt)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "eval",
+              "signature": "eval(expression, globals=None, locals=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "exec",
+              "signature": "exec(object, globals=None, locals=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "compile",
+              "signature": "compile(source, filename, mode)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+          ],
+          "function_param_hint": "For CWE-094 code injection, focus on parameters that can reach dynamic code evaluation APIs such as eval, exec, compile, expression evaluators, or template engines that interpret code-like input."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-094/cwe-094wLLM.ql",
+          "cwe-queries/cpp/cwe-094/MyCodeInjectionQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "getenv",
+              "signature": "getenv(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "lua",
+              "class": "function",
+              "method": "luaL_dostring",
+              "signature": "luaL_dostring(L;str)",
+              "sink_args": ["p1"],
+              "type": "sink",
+            },
+            {
+              "package": "python-c-api",
+              "class": "function",
+              "method": "PyRun_SimpleString",
+              "signature": "PyRun_SimpleString(command)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "sprintf",
+              "signature": "sprintf(buffer;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-094 code injection, focus on parameters that can influence script strings, expression strings, dynamic evaluator inputs, or embedded interpreter APIs such as Lua/Python/JavaScript evaluation calls."
+        }
+      }
+    },
     "prompts": {
       "cwe-id": "CWE-079",
       "desc": "Code Injection",
@@ -506,9 +917,9 @@ of proper input/output data validation.""",
     "desc": "Code Injection",
     "type": "cwe-query-ablation",
     "queries": [
-      "cwe-queries/cwe-094/SpelInjectionSourcesOnly.ql",
-      "cwe-queries/cwe-094/MySpelInjection.qll",
-      "cwe-queries/cwe-094/MySpelInjectionQuery.qll",
+      "cwe-queries/java/cwe-094/SpelInjectionSourcesOnly.ql",
+      "cwe-queries/java/cwe-094/MySpelInjection.qll",
+      "cwe-queries/java/cwe-094/MySpelInjectionQuery.qll",
     ]
   },
    "cwe-094wLLMSinksOnly": {
@@ -519,9 +930,9 @@ of proper input/output data validation.""",
     "type": "cwe-query-ablation",
     "desc": "Code Injection",
     "queries": [
-      "cwe-queries/cwe-094/SpelInjectionSinksOnly.ql",
-      "cwe-queries/cwe-094/MySpelInjection.qll",
-      "cwe-queries/cwe-094/MySpelInjectionQuery.qll",
+      "cwe-queries/java/cwe-094/SpelInjectionSinksOnly.ql",
+      "cwe-queries/java/cwe-094/MySpelInjection.qll",
+      "cwe-queries/java/cwe-094/MySpelInjectionQuery.qll",
     ]
   },
   "cwe-094wCodeQL": {
@@ -548,9 +959,99 @@ of proper input/output data validation.""",
     "type": "cwe-query",
     "desc": "Server-Side Request Forgery (SSRF)",
     "queries": [
-      "cwe-queries/cwe-918/cwe-918wLLM.ql",
-      "cwe-queries/cwe-918/MyRequestForgeryQuery.qll"
+      "cwe-queries/java/cwe-918/cwe-918wLLM.ql",
+      "cwe-queries/java/cwe-918/MyRequestForgeryQuery.qll"
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-918/cwe-918wLLM.ql",
+          "cwe-queries/python/cwe-918/MyRequestForgeryQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "flask",
+              "class": "Request",
+              "method": "args.get",
+              "signature": "request.args.get(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "requests",
+              "class": "module",
+              "method": "get",
+              "signature": "requests.get(url, **kwargs)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "urllib.request",
+              "class": "module",
+              "method": "urlopen",
+              "signature": "urllib.request.urlopen(url, data=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "urllib.parse",
+              "class": "module",
+              "method": "urljoin",
+              "signature": "urllib.parse.urljoin(base, url)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-918 SSRF, focus on parameters that can influence outbound request URLs, hosts, schemes, paths, or request objects passed to HTTP client APIs."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-918/cwe-918wLLM.ql",
+          "cwe-queries/cpp/cwe-918/MyRequestForgeryQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "getenv",
+              "signature": "getenv(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "libcurl",
+              "class": "function",
+              "method": "curl_easy_setopt",
+              "signature": "curl_easy_setopt(curl;option;parameter)",
+              "sink_args": ["p2"],
+              "type": "sink",
+            },
+            {
+              "package": "libcurl",
+              "class": "function",
+              "method": "curl_url_set",
+              "signature": "curl_url_set(url;part;content;flags)",
+              "sink_args": ["p2"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "snprintf",
+              "signature": "snprintf(buffer;size;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-918 SSRF, focus on parameters that can influence outbound URLs, hosts, schemes, or request destination strings used by libcurl, HTTP clients, or socket/request helpers."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-918",
       "desc": "Server-Side Request Forgery (SSRF)",
@@ -597,8 +1098,8 @@ or network egress filtering where possible.""",
     "cwe_id_tag": "CWE-807",
     "desc": "Reliance on Untrusted Inputs in a Security Decision",
     "queries": [
-        "cwe-queries/cwe-807/cwe-807wLLM.ql",
-        "cwe-queries/cwe-807/MyTaintedPermissionsCheckQuery.qll",
+        "cwe-queries/java/cwe-807/cwe-807wLLM.ql",
+        "cwe-queries/java/cwe-807/MyTaintedPermissionsCheckQuery.qll",
     ],
     "prompts": {
         "cwe_id": "CWE-807",
@@ -642,9 +1143,9 @@ CWE-807 refers that the product uses a protection mechanism that relies on the e
   "cwe_id_tag": "CWE-352",
   "desc": "Cross-Site Request Forgery",
   "queries": [
-    "cwe-queries/cwe-352/cwe-352wLLM.ql",
-    "cwe-queries/cwe-352/MyJsonpInjectionLib.qll",
-    "cwe-queries/cwe-352/MyJsonStringLib.qll",
+    "cwe-queries/java/cwe-352/cwe-352wLLM.ql",
+    "cwe-queries/java/cwe-352/MyJsonpInjectionLib.qll",
+    "cwe-queries/java/cwe-352/MyJsonStringLib.qll",
   ],
   "prompts": {
     "cwe_id": "CWE-352",
@@ -689,10 +1190,10 @@ Sources typically include untrusted HTTP request parameters (such as 'callback')
     "cwe_id_tag": "CWE-611",
     "desc": "Improper Restriction of XML External Entity Reference",
     "queries": [
-      "cwe-queries/cwe-611/XXE.ql",
-      "cwe-queries/cwe-611/MyXxeRemoteQuery.qll",
-      "cwe-queries/cwe-611/MyXxeQuery.qll",
-      "cwe-queries/cwe-611/MyXxe.qll"
+      "cwe-queries/java/cwe-611/XXE.ql",
+      "cwe-queries/java/cwe-611/MyXxeRemoteQuery.qll",
+      "cwe-queries/java/cwe-611/MyXxeQuery.qll",
+      "cwe-queries/java/cwe-611/MyXxe.qll"
     ],
     "prompts": {
       "cwe_id": "CWE-611",
@@ -729,9 +1230,9 @@ Once the content of the URI is read, it is fed back into the application that is
     "cwe_id_tag": "CWE-295",
     "desc": "Improper Certificate Validation",
     "queries": [
-      "cwe-queries/cwe-295/InsecureTrustManager.ql",
-      "cwe-queries/cwe-295/MyInsecureTrustManager.qll",
-      "cwe-queries/cwe-295/MyInsecureTrustManagerQuery.qll",
+      "cwe-queries/java/cwe-295/InsecureTrustManager.ql",
+      "cwe-queries/java/cwe-295/MyInsecureTrustManager.qll",
+      "cwe-queries/java/cwe-295/MyInsecureTrustManagerQuery.qll",
     ],
     "prompts": {
       "cwe_id": "CWE-295",
@@ -762,37 +1263,73 @@ Once the content of the URI is read, it is fed back into the application that is
   "fetch_external_apis": {
     "name": "fetch_external_apis",
     "queries": [
-      "queries/fetch_external_apis.ql"
+      "queries/java/fetch_external_apis.ql"
+    ]
+  },
+  "fetch_external_apis_python": {
+    "name": "fetch_external_apis_python",
+    "queries": [
+      "queries/python/fetch_external_apis.ql"
+    ]
+  },
+  "fetch_external_apis_cpp": {
+    "name": "fetch_external_apis_cpp",
+    "queries": [
+      "queries/cpp/fetch_external_apis.ql"
     ]
   },
   "fetch_func_params": {
     "name": "fetch_func_params",
     "queries": [
-      "queries/fetch_func_params.ql"
+      "queries/java/fetch_func_params.ql"
+    ]
+  },
+  "fetch_func_params_python": {
+    "name": "fetch_func_params_python",
+    "queries": [
+      "queries/python/fetch_func_params.ql"
+    ]
+  },
+  "fetch_func_params_cpp": {
+    "name": "fetch_func_params_cpp",
+    "queries": [
+      "queries/cpp/fetch_func_params.ql"
     ]
   },
   "fetch_func_locs": {
     "name": "fetch_func_locs",
     "queries": [
-      "queries/fetch_func_locs.ql"
+      "queries/java/fetch_func_locs.ql"
+    ]
+  },
+  "fetch_func_locs_python": {
+    "name": "fetch_func_locs_python",
+    "queries": [
+      "queries/python/fetch_func_locs.ql"
+    ]
+  },
+  "fetch_func_locs_cpp": {
+    "name": "fetch_func_locs_cpp",
+    "queries": [
+      "queries/cpp/fetch_func_locs.ql"
     ]
   },
   "fetch_class_locs": {
     "name": "fetch_class_locs",
     "queries": [
-      "queries/fetch_class_locs.ql"
+      "queries/java/fetch_class_locs.ql"
     ]
   },
   "fetch_sources": {
     "name": "fetch_sources",
     "queries": [
-      "queries/fetch_sources.ql"
+      "queries/java/fetch_sources.ql"
     ]
   },
   "fetch_sinks": {
     "name": "fetch_sinks",
     "queries": [
-      "queries/fetch_sinks.ql"
+      "queries/java/fetch_sinks.ql"
     ]
   }
 }

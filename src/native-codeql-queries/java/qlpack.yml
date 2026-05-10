@@ -1,0 +1,7 @@
+name: iris/custom-java-security-queries
+version: 0.0.1
+library: false
+extractor: java
+dependencies:
+  codeql/java-all: "*"
+

@@ -75,7 +75,7 @@ python src/codeql_vul.py \
 {
   "key": "你的 API Key",
   "url": "https://api.deepseek.com",
-  "model": "deepseek-chat"
+  "model": "deepseek-v4-pro"
 }
 ```
 
@@ -88,7 +88,7 @@ python src/codeql_vul.py \
   --query cwe-078wCodeQL \
   --language python \
   --posthoc-filter-only \
-  --llm deepseek-chat \
+  --llm cloud \
   --overwrite \
   <project_slug>
 ```
@@ -102,7 +102,7 @@ python src/codeql_vul.py \
   --query cwe-078wCodeQL \
   --language cpp \
   --llm-posthoc-filter \
-  --llm deepseek-chat \
+  --llm cloud \
   --overwrite \
   <project_slug>
 ```
@@ -155,7 +155,7 @@ python src/codeql_vul.py \
   --query cwe-078wCodeQL \
   --language python \
   --posthoc-filter-only \
-  --llm deepseek-chat \
+  --llm cloud \
   --overwrite \
   iris-python-smoke
 ```
@@ -183,7 +183,7 @@ python src/codeql_vul.py \
   --query cwe-078wCodeQL \
   --language cpp \
   --posthoc-filter-only \
-  --llm deepseek-chat \
+  --llm cloud \
   --overwrite \
   iris-cpp-smoke
 ```
@@ -209,6 +209,6 @@ sink = system(command)
 - Python 函数范围使用 `ast` 提取。
 - C/C++ 函数范围优先使用 tree-sitter 提取，能够比正则更好地处理多行函数签名、类成员函数、lambda、模板等语法；如果 tree-sitter 不可用，会回退到轻量启发式匹配。
 - 中间 steps 会保留 SARIF message，例如 `(*access to array)`、`(sprintf output argument)`，这样同一源码行上的不同数据流节点也能区分。
-- 远程模型配置统一从仓库根目录 `cloud_config.json` 读取；真实请求使用其中的 `model` 字段。
+- 远程模型统一通过 `--llm cloud` 进入云端适配器；真实请求使用仓库根目录 `cloud_config.json` 的 `model` 字段。
 - 当前实现没有破坏 Java 原 posthoc；Java 仍走原 `ContextualAnalysisPipeline`。
-- 后续如果要做 Python / C/C++ 的 LLM source/sink 打标签，可以继续复用这个 native posthoc 的 SARIF 解析、prompt 日志和结果过滤结构。
+- Python / C/C++ 的 LLM 打标签路线已经复用了这套 native posthoc；目前 `cwe-022wLLM`、`cwe-078wLLM`、`cwe-089wLLM`、`cwe-094wLLM`、`cwe-918wLLM` 均可产出对应的 posthoc 结果。

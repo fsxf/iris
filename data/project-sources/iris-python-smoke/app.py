@@ -14,6 +14,11 @@ def run_command(command):
     os.system(command)
 
 
+def run_from_stdin():
+    command = input("command: ")
+    os.system(command)
+
+
 @app.route("/run")
 def run_from_request():
     command = request.args["cmd"]

@@ -234,4 +234,5 @@ output/<project_slug>/codeql-cpp/<query>/results.sarif
 - C/C++ 真实项目优先使用 `--command`，不要依赖 `build-mode=none` 做最终判断。
 - Windows 下的 MinGW `gcc.exe` 不能直接作为 WSL/Linux CodeQL 的编译捕获目标；推荐使用 WSL 内的 gcc/make/cmake。
 - 如果项目依赖复杂，先确保项目能在 WSL 里独立编译成功，再交给 CodeQL 建库。
-- 当前路线只做 CodeQL 原生查询，没有进入 IRIS 的 LLM 终审阶段；后续可以在这个结果基础上继续接入 LLM posthoc filtering。
+- 本文介绍的是 CodeQL 原生查询路线本身；如果需要 LLM 后审，可以结合 `docs-local/README-native-posthoc.md` 使用 native posthoc。
+- 如果要走 IRIS 风格的 LLM source/sink/parameter 打标签路线，请看 `docs-local/README-llm-routes.md`。

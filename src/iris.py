@@ -20,10 +20,12 @@ IRIS_ROOT_DIR = os.path.abspath(f"{THIS_SCRIPT_DIR}/../")
 sys.path.append(IRIS_ROOT_DIR)
 
 from src.config import CODEQL_DIR, CODEQL_DB_PATH, PACKAGE_MODULES_PATH, OUTPUT_DIR, ALL_METHOD_INFO_DIR, PROJECT_SOURCE_CODE_DIR, CVES_MAPPED_W_COMMITS_DIR, CODEQL_QUERY_VERSION
+from src.language_config import get_language_config, normalize_language
 
 
 from src.logger import Logger
 from src.queries import QUERIES
+from src.language_prompts import LANGUAGE_PROMPTS
 from src.prompts import API_LABELLING_SYSTEM_PROMPT, API_LABELLING_USER_PROMPT
 from src.prompts import FUNC_PARAM_LABELLING_SYSTEM_PROMPT, FUNC_PARAM_LABELLING_USER_PROMPT
 
@@ -33,10 +35,18 @@ from src.codeql_queries import QL_METHOD_CALL_SOURCE_BODY_ENTRY, QL_FUNC_PARAM_S
 from src.codeql_queries import QL_SUMMARY_BODY_ENTRY, QL_BODY_OR_SEPARATOR
 from src.codeql_queries import QL_SUBSET_PREDICATE, CALL_QL_SUBSET_PREDICATE
 from src.codeql_queries import QL_SINK_BODY_ENTRY, QL_SINK_ARG_NAME_ENTRY, QL_SINK_ARG_THIS_ENTRY
+from src.codeql_queries_python import PYTHON_QL_SOURCE_PREDICATE, PYTHON_QL_STEP_PREDICATE, PYTHON_QL_SINK_PREDICATE
+from src.codeql_queries_python import PYTHON_QL_API_SOURCE_ENTRY, PYTHON_QL_FUNC_PARAM_SOURCE_ENTRY
+from src.codeql_queries_python import PYTHON_QL_API_SINK_ARG_ENTRY, PYTHON_QL_STEP_ENTRY
+from src.codeql_queries_cpp import CPP_QL_SOURCE_PREDICATE, CPP_QL_STEP_PREDICATE, CPP_QL_SINK_PREDICATE
+from src.codeql_queries_cpp import CPP_QL_API_SOURCE_ENTRY, CPP_QL_FUNC_PARAM_SOURCE_ENTRY
+from src.codeql_queries_cpp import CPP_QL_API_SINK_ARG_ENTRY, CPP_QL_STEP_ARG_TO_RETURN_ENTRY
+from src.codeql_queries_cpp import CPP_QL_STEP_ARG_TO_OUTPUT_ARG_ENTRY
 
 from src.modules.codeql_query_runner import CodeQLQueryRunner
 from src.modules.contextual_analysis_pipeline import ContextualAnalysisPipeline
 from src.modules.evaluation_pipeline import EvaluationPipeline
+from src.modules.native_contextual_analysis_pipeline import NativeContextualAnalysisPipeline
 
 from src.models.llm import LLM
 
@@ -91,10 +101,13 @@ class SAPipeline:
             test_run: bool = False,
             no_logger: bool = False,
             use_container: bool = False,
+            language: str = "java",
     ):
         # Store basic information
         self.project_name = project_name
         self.query = query
+        self.language = normalize_language(language)
+        self.language_config = get_language_config(self.language)
         self.llm = llm
         self.label_api_batch_size = label_api_batch_size
         self.label_func_param_batch_size = label_func_param_batch_size
@@ -145,27 +158,34 @@ class SAPipeline:
                 self.master_logger.error(f"==> Unknown query `{self.query}`; aborting")
             raise Exception(f"Unknown query `{self.query}`; aborting")
         self.cwe_id = QUERIES[self.query]["cwe_id"]
-        self.cve_id = project_name.split("_")[3]
 
-        # Load some basic information, such as commits and fixes related to the CVE
+        # Load Java/CWE-Bench metadata only for the original Java route.
         self.project_source_code_dir = f"{PROJECT_SOURCE_CODE_DIR}/{self.project_name}"
-        if self.cve_id is not None and self.cve_id.startswith("CVE-"):
+        project_parts = project_name.split("_")
+        self.cve_id = project_parts[3] if len(project_parts) > 3 else None
+        if self.language == "java" and self.cve_id is not None and self.cve_id.startswith("CVE-"):
             self.all_cves_with_commit = pd.read_csv(CVES_MAPPED_W_COMMITS_DIR)
             self.project_cve_with_commit_info = self.all_cves_with_commit[self.all_cves_with_commit["cve_id"] == self.cve_id].iloc[0]
             self.cve_fixing_commits = self.project_cve_with_commit_info["fix_commit_ids"].split(";")
         else:
             self.cve_fixing_commits = []
-        self.fixed_methods = pd.read_csv(ALL_METHOD_INFO_DIR)
-        self.project_fixed_methods = self.fixed_methods[self.fixed_methods["project_slug"] == self.project_name]
-        self.project_fixed_modules = self.project_fixed_methods[
-            self.project_fixed_methods["file"].str.contains("src/main") &
-            self.project_fixed_methods["file"].str.endswith(".java")]
-        self.fixed_modules = self.project_fixed_modules \
-            .apply(lambda f: \
-                pd.Series([
-                    f["file"][:f["file"].index("src/main") - 1] if f["file"].index("src/main") > 1 else ""
-                ], index=["module"]), axis=1, result_type="expand") \
-            .drop_duplicates()
+        if self.language == "java":
+            self.fixed_methods = pd.read_csv(ALL_METHOD_INFO_DIR)
+            self.project_fixed_methods = self.fixed_methods[self.fixed_methods["project_slug"] == self.project_name]
+            self.project_fixed_modules = self.project_fixed_methods[
+                self.project_fixed_methods["file"].str.contains("src/main") &
+                self.project_fixed_methods["file"].str.endswith(".java")]
+            self.fixed_modules = self.project_fixed_modules \
+                .apply(lambda f: \
+                    pd.Series([
+                        f["file"][:f["file"].index("src/main") - 1] if f["file"].index("src/main") > 1 else ""
+                    ], index=["module"]), axis=1, result_type="expand") \
+                .drop_duplicates()
+        else:
+            self.fixed_methods = pd.DataFrame()
+            self.project_fixed_methods = pd.DataFrame()
+            self.project_fixed_modules = pd.DataFrame()
+            self.fixed_modules = pd.DataFrame()
 
         # Basic path information
         self.project_output_path = f"{OUTPUT_DIR}/{self.project_name}/{self.run_id}"
@@ -173,7 +193,7 @@ class SAPipeline:
         # Setup codeql database path
         db_project_name = f"{self.project_name}-docker" if self.use_container else self.project_name
         self.project_codeql_db_path = f"{CODEQL_DB_PATH}/{db_project_name}"
-        if not os.path.exists(f"{self.project_codeql_db_path}/db-java"):
+        if not os.path.exists(f"{self.project_codeql_db_path}/{self.language_config.database_subdir}"):
             if not self.no_logger:
                 self.master_logger.info(f"Processing {self.project_name} (Query: {self.query}, Trial: {self.run_id})...")
                 self.master_logger.error(f"==> Cannot find CodeQL database for {self.project_name}; aborting")
@@ -263,12 +283,17 @@ class SAPipeline:
 
     def _create_custom_qlpack_yml(self):
         """Create qlpack.yml for the custom CodeQL package"""
+        if self.language == "java":
+            deps = "  codeql/java-all: \"*\"\n  codeql/java-queries: \"*\""
+        elif self.language == "python":
+            deps = "  codeql/python-all: \"*\"\n  codeql/python-queries: \"*\""
+        else:
+            deps = "  codeql/cpp-all: \"*\"\n  codeql/cpp-queries: \"*\""
         qlpack_content = f"""
 name: iris
 version: 1.0.0
 dependencies:
-  codeql/java-all: "*"
-  codeql/java-queries: "*"
+{deps}
 """
         qlpack_path = f"{self.custom_codeql_root}/qlpack.yml"
         os.makedirs(self.custom_codeql_root, exist_ok=True)
@@ -280,16 +305,65 @@ dependencies:
             self.model = LLM.get_llm(model_name=self.llm, logger=self.project_logger, kwargs={"seed": self.seed, "max_new_tokens": 2048})
         return self.model
 
+    def get_language_query_config(self):
+        return QUERIES[self.query].get("languages", {}).get(self.language, {})
+
+    def get_language_prompt_config(self):
+        return self.get_language_query_config().get("prompts", {})
+
+    def get_api_labelling_prompts(self):
+        language_prompts = self.get_language_prompt_config()
+        api_examples = language_prompts.get("api_examples")
+        if api_examples is not None:
+            system_prompt = API_LABELLING_SYSTEM_PROMPT
+            for old, new in LANGUAGE_PROMPTS.get(self.language, {}).get("api_system_prompt_replacements", {}).items():
+                system_prompt = system_prompt.replace(old, new)
+            return system_prompt, json.dumps(api_examples, indent=2)
+
+        examples = json.dumps(QUERIES[self.query]["prompts"]["examples"], indent=2)
+        return API_LABELLING_SYSTEM_PROMPT, examples
+
+    def get_func_param_labelling_prompts(self):
+        language_prompts = self.get_language_prompt_config()
+        default_prompts = LANGUAGE_PROMPTS.get(self.language, {})
+        return (
+            language_prompts.get(
+                "function_param_system_prompt",
+                default_prompts.get("function_param_system_prompt", FUNC_PARAM_LABELLING_SYSTEM_PROMPT),
+            ),
+            language_prompts.get(
+                "function_param_user_prompt",
+                default_prompts.get("function_param_user_prompt", FUNC_PARAM_LABELLING_USER_PROMPT),
+            ),
+        )
+
+    def get_func_param_cwe_hint(self):
+        hint = self.get_language_prompt_config().get("function_param_hint", "")
+        return f"{hint}\n" if hint else ""
+
     def run_simple_codeql_query(self, query, target_csv_path=None, suffix=None, dyn_queries={}):
         runner = CodeQLQueryRunner(self.project_output_path, self.project_codeql_db_path, self.project_logger)
-        runner.run(query, target_csv_path, suffix, dyn_queries)
+        actual_query = query
+        language_query = f"{query}_{self.language}"
+        if self.language != "java" and language_query in QUERIES:
+            actual_query = language_query
+            if target_csv_path is None:
+                suffix_dir = "" if suffix is None else f"/{suffix}"
+                target_dir = f"{self.project_output_path}/{query}{suffix_dir}"
+                os.makedirs(target_dir, exist_ok=True)
+                target_csv_path = f"{target_dir}/results.csv"
+        runner.run(actual_query, target_csv_path, suffix, dyn_queries)
 
     def keep_external_packages(self, api_candidates_df):
+        if self.language != "java":
+            return api_candidates_df
         packages = open(f"{PACKAGE_MODULES_PATH}/{self.project_name}.txt").readlines()
         packages = [p.strip() for p in packages]
         return api_candidates_df[~api_candidates_df["package"].isin(packages)]
 
     def keep_internal_packages(self, api_candidates_df):
+        if self.language != "java":
+            return api_candidates_df
         packages = open(f"{PACKAGE_MODULES_PATH}/{self.project_name}.txt").readlines()
         packages = [p.strip() for p in packages]
         return api_candidates_df[api_candidates_df["package"].isin(packages)]
@@ -482,47 +556,79 @@ dependencies:
         json.dump(reload_cache, open(self.api_labels_cache_path, "w"), indent=2)
 
     def parse_json(self, json_str):
-        try:
-            #print("try 1", json_str)
-            import re
-            
-            # Remove markdown code block markers if present
-            json_str = re.sub(r'```json\s*', '', json_str)
-            json_str = re.sub(r'```\s*$', '', json_str)
-
-            # Handle escaped single quotes which are invalid in JSON
-            json_str = json_str.replace("\\'", "'")
-
-            # Original cleanup
-            json_str = json_str.replace("\\n", "").replace("\\\n", "")
-            json_str = re.sub("//.*", "", json_str)
-            json_str = re.sub("\"\"", "\"", json_str)
-
-            
-            # Extract JSON array
-            json_match = re.findall("\[[\s\S]*\]", json_str)
-            if not json_match:
-                self.project_logger.error("Error parsing JSON: No JSON array found in response")
-                return []
-
-            json_str = json_match[0]
-            #json_str = re.sub(r"\\n", "", json_str)
-            result = json.loads(json_str)
-            if type(result) == list:
+        def normalize_json_result(result):
+            if isinstance(result, list):
                 return result
-            else:
+            if isinstance(result, dict):
+                for key in ("results", "items", "labels", "apis", "functions"):
+                    value = result.get(key)
+                    if isinstance(value, list):
+                        return value
+                return [result]
+            return []
+
+        def strip_code_fences(text):
+            text = text.strip()
+            fenced = re.match(r"^```(?:json)?\s*([\s\S]*?)\s*```$", text)
+            if fenced:
+                return fenced.group(1).strip()
+            return text
+
+        def first_balanced_json_array(text):
+            start = text.find("[")
+            while start != -1:
+                depth = 0
+                in_string = False
+                escape = False
+                for idx in range(start, len(text)):
+                    ch = text[idx]
+                    if in_string:
+                        if escape:
+                            escape = False
+                        elif ch == "\\":
+                            escape = True
+                        elif ch == "\"":
+                            in_string = False
+                        continue
+                    if ch == "\"":
+                        in_string = True
+                    elif ch == "[":
+                        depth += 1
+                    elif ch == "]":
+                        depth -= 1
+                        if depth == 0:
+                            return text[start:idx + 1]
+                start = text.find("[", start + 1)
+            return None
+
+        try:
+            json_str = strip_code_fences(str(json_str))
+            json_str = json_str.replace("\\'", "'")
+            json_str = json_str.replace("\\n", "").replace("\\\n", "")
+            json_str = re.sub(r"//.*", "", json_str)
+            json_str = re.sub(r"\"\"", "\"", json_str)
+
+            try:
+                return normalize_json_result(json.loads(json_str))
+            except Exception:
+                pass
+
+            json_array = first_balanced_json_array(json_str)
+            if not json_array:
+                self.project_logger.error("Error parsing JSON: No JSON array found in response")
+                self.project_logger.error(f"Problematic JSON string: {repr(json_str[:500])}")
                 return []
+            return normalize_json_result(json.loads(json_array))
         except Exception as e:
             print(e)
             try:
                 self.project_logger.error("Error parsing JSON 1. Trying list parsing")
                 results = re.findall(r"{[^}]*}", json_str)
-                results = [json.loads(r.strip()) for r in results]
-                return results
+                return [json.loads(r.strip()) for r in results]
             except Exception as e:
                 print(e)
                 self.project_logger.error("Error parsing JSON 2")
-                self.project_logger.error(f"Problematic JSON string: {repr(json_str[:500])}")
+                self.project_logger.error(f"Problematic JSON string: {repr(str(json_str)[:500])}")
         return []
 
     def query_gpt_for_api_src_tp_sink_batched(self):
@@ -549,10 +655,9 @@ dependencies:
 
             # 3. Setup LLMs and relevant queries
             #model = LLM.get_llm(model_name=self.llm, logger=self.project_logger, kwargs={"seed": self.seed, "max_new_tokens": 1024})
-            system_prompt = API_LABELLING_SYSTEM_PROMPT
+            system_prompt, cwe_examples = self.get_api_labelling_prompts()
             cwe_description = QUERIES[self.query]["prompts"]["desc"]
             cwe_long_description = QUERIES[self.query]["prompts"]["long_desc"]
-            cwe_examples = json.dumps(QUERIES[self.query]["prompts"]["examples"], indent=2)
 
             # 4. Setup dispatch function. This function will be invoked for each batch, where i = 0, batch_size, 2 * batch_size, ...
             def process_candidate_batch(i):
@@ -663,6 +768,16 @@ dependencies:
         if os.path.exists(readme_head_txt_path) and not self.overwrite:
             self.project_logger.info("  ==> Found fetched readme. Skipping fetch project description...")
             return "".join(list(open(readme_head_txt_path)))
+        if self.language != "java":
+            for possible_readme_file_name in ["README.md", "README", "readme.md", "readme"]:
+                readme_path = f"{self.project_source_code_dir}/{possible_readme_file_name}"
+                if os.path.exists(readme_path):
+                    lines = open(readme_path, encoding="utf-8", errors="ignore").read().splitlines()
+                    paragraph = self.first_project_description_paragraph(lines)
+                    with open(readme_head_txt_path, "w") as f:
+                        f.write(paragraph)
+                    return paragraph
+            return f"Python project {self.project_name}."
         else:
             # There has to be some commit associated with this CVE
             if len(self.cve_fixing_commits) == 0:
@@ -688,6 +803,11 @@ dependencies:
 
             # At this stage, it is failed
             self.project_logger.error(f"  ==> Cannot pull project readme. Aborting..."); return
+
+    def get_project_owner_and_name(self):
+        if self.language == "java" and len(self.project_name.split("_")) > 2:
+            return self.project_name.split("_")[0], self.project_name.split("_")[2]
+        return "local", self.project_name
 
     def extract_doc(self, doc_str):
         if doc_str is None:
@@ -722,14 +842,59 @@ dependencies:
         # Return
         return candidates
 
+    def normalize_python_source_func_param_results(self, results, candidates):
+        candidate_by_func = {func: (package, clazz, func, signature, doc) for package, clazz, func, signature, doc in candidates}
+        candidate_by_signature = {signature: (package, clazz, func, signature, doc) for package, clazz, func, signature, doc in candidates}
+        normalized_results = []
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            method = str(result.get("method", "")).strip()
+            signature = str(result.get("signature", "")).strip()
+            method_without_args = re.sub(r"\(.*\)$", "", method).strip()
+            candidate = (
+                candidate_by_func.get(method)
+                or candidate_by_func.get(method_without_args)
+                or candidate_by_signature.get(signature)
+            )
+            if candidate is None:
+                for candidate_signature, candidate_row in candidate_by_signature.items():
+                    if method and candidate_signature.startswith(method_without_args + "("):
+                        candidate = candidate_row
+                        break
+            if candidate is None:
+                continue
+
+            package, clazz, func, full_signature, _ = candidate
+            tainted_input = result.get("tainted_input", [])
+            if isinstance(tainted_input, str):
+                tainted_input = [tainted_input]
+            tainted_input = [str(arg).strip() for arg in tainted_input if str(arg).strip()]
+            if not tainted_input:
+                continue
+
+            normalized_results.append({
+                "package": package,
+                "class": clazz,
+                "method": func,
+                "signature": full_signature,
+                "tainted_input": tainted_input,
+            })
+        return normalized_results
+
     def query_gpt_for_func_param_src(self):
         self.project_logger.info("==> Stage 4: Querying GPT for source function parameters...")
+        if self.language not in {"java", "python", "cpp"}:
+            self.project_logger.info(f"  ==> {self.language} first version skips internal function parameter labelling...")
+            if not os.path.exists(self.llm_labelled_source_func_params_path) or self.overwrite or self.overwrite_labelled_func_param:
+                json.dump([], open(self.llm_labelled_source_func_params_path, "w"), indent=2)
+            return
+
         if not os.path.exists(self.llm_labelled_source_func_params_path) or self.overwrite or self.overwrite_labelled_func_param:
             # 1. Get LLM and fetch information used for prompt
-            system_prompt = FUNC_PARAM_LABELLING_SYSTEM_PROMPT
+            system_prompt, user_prompt_template = self.get_func_param_labelling_prompts()
             proj_description = self.fetch_project_description_from_readme()
-            proj_username = self.project_name.split("_")[0]
-            proj_name = self.project_name.split("_")[2]
+            proj_username, proj_name = self.get_project_owner_and_name()
 
             # 2. Get LLM
             #model = LLM.get_llm(model_name=self.llm, logger=self.project_logger, kwargs={"seed": self.seed, "max_new_tokens": 1024})
@@ -741,13 +906,17 @@ dependencies:
             def process_candidate_batch(i):
                 # 4.1. Get the batch of to query candidates
                 batch = candidates[i:i + self.label_func_param_batch_size]
-                api_list_text = "\n".join([",".join([row[0], row[1], row[3], row[4]]) for row in batch])
+                if self.language in {"python", "cpp"}:
+                    api_list_text = "\n".join([",".join([row[0], row[1], row[2], row[3], row[4]]) for row in batch])
+                else:
+                    api_list_text = "\n".join([",".join([row[0], row[1], row[3], row[4]]) for row in batch])
 
                 # 4.2. Build the user prompt and dump it
-                user_prompt = FUNC_PARAM_LABELLING_USER_PROMPT.format(
+                user_prompt = user_prompt_template.format(
                     project_username=proj_username,
                     project_name=proj_name,
                     project_readme_summary=proj_description,
+                    cwe_hint=self.get_func_param_cwe_hint(),
                     methods=api_list_text)
                 with open(f"{self.label_func_params_log_path}/raw_user_prompt_{i}.txt", "w") as f:
                     f.write(user_prompt + "\n")
@@ -776,6 +945,8 @@ dependencies:
             merged_llm_results = []
             for indiv_result in indiv_results:
                 merged_llm_results.extend(indiv_result)
+            if self.language in {"python", "cpp"}:
+                merged_llm_results = self.normalize_python_source_func_param_results(merged_llm_results, candidates)
 
             # 7. Save the result for this project
             self.project_logger.info(f"  ==> Finished querying LLM. #Function with source param: {len(merged_llm_results)}")
@@ -790,7 +961,245 @@ dependencies:
     def filter_invalid_entries(self, api_list):
         return [api for api in api_list if self.not_none(api, ["method", "class", "package", "signature"])]
 
+    def python_api_expr(self, api):
+        method = str(api.get("method", "")).strip()
+        package = str(api.get("package", "")).strip()
+        method = re.sub(r"\(.*\)$", "", method)
+        if method.startswith("Function "):
+            method = method[len("Function "):]
+        if method.endswith("()"):
+            method = method[:-2]
+
+        if "." in method:
+            parts = [p for p in method.split(".") if p]
+        elif package and package not in {"python", "builtins", "module"}:
+            parts = [package, method]
+        elif package == "builtins":
+            parts = [method]
+        else:
+            parts = [method]
+
+        if len(parts) == 1:
+            return f'API::builtin("{parts[0]}")'
+
+        expr = f'API::moduleImport("{parts[0]}")'
+        for part in parts[1:]:
+            expr += f'.getMember("{part}")'
+        return expr
+
+    def python_call_name(self, api):
+        method = str(api.get("method", "")).strip()
+        method = re.sub(r"\(.*\)$", "", method)
+        if method.startswith("Function "):
+            method = method[len("Function "):]
+        if method.endswith("()"):
+            method = method[:-2]
+        return method
+
+    def ql_string_escape(self, value):
+        return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+    def python_param_name_and_index(self, arg_name):
+        raw_arg = str(arg_name).strip()
+        match = re.fullmatch(r"p?([0-9]+)", raw_arg)
+        if match:
+            return raw_arg, int(match.group(1))
+        return raw_arg, -1
+
+    def python_api_arg_count(self, api):
+        signature = str(api.get("signature", ""))
+        match = re.search(r"\((.*)\)", signature)
+        if not match:
+            return 1
+        args = [arg.strip() for arg in match.group(1).split(";") if arg.strip()]
+        if not args:
+            comma_args = [arg.strip() for arg in match.group(1).split(",") if arg.strip()]
+            args = comma_args
+        return max(len(args), 1)
+
+    def build_python_source_qll_with_enumeration(self):
+        source_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_apis_path)))
+        source_api_entries = [
+            PYTHON_QL_API_SOURCE_ENTRY.format(api_expr=self.python_api_expr(api))
+            for api in source_apis
+        ]
+
+        source_params = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_func_params_path)))
+        source_param_entries = []
+        for param_func in source_params:
+            for arg_name in param_func.get("tainted_input", []):
+                if arg_name == "this":
+                    continue
+                param_name, param_index = self.python_param_name_and_index(arg_name)
+                source_param_entries.append(
+                    PYTHON_QL_FUNC_PARAM_SOURCE_ENTRY.format(
+                        function=self.ql_string_escape(param_func["method"]),
+                        param=self.ql_string_escape(param_name),
+                        param_index=param_index,
+                    )
+                )
+
+        all_entries = source_api_entries + source_param_entries
+        body = QL_BODY_OR_SEPARATOR.join(all_entries) if all_entries else "    1 = 0"
+        return PYTHON_QL_SOURCE_PREDICATE.format(body=body, additional="")
+
+    def build_python_sink_qll_with_enumeration(self):
+        sink_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_sink_apis_path)))
+        sink_entries = []
+        for api in sink_apis:
+            sink_args = api.get("sink_args", ["p0"]) or ["p0"]
+            for sink_arg in sink_args:
+                match = re.findall(r"p?([0-9]+)", str(sink_arg))
+                if match:
+                    sink_entries.append(
+                        PYTHON_QL_API_SINK_ARG_ENTRY.format(
+                            api_expr=self.python_api_expr(api),
+                            arg_id=int(match[0]),
+                            call_name=self.ql_string_escape(self.python_call_name(api)),
+                        )
+                    )
+        body = QL_BODY_OR_SEPARATOR.join(sink_entries) if sink_entries else "    1 = 0"
+        return PYTHON_QL_SINK_PREDICATE.format(body=body, additional="")
+
+    def build_python_taint_propagator_qll_with_enumeration(self):
+        summary_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_taint_prop_apis_path)))
+        if len(summary_apis) == 0 or self.no_summary_model:
+            body = "    prev = next and 1 = 0"
+        else:
+            entries = []
+            for api in summary_apis:
+                for arg_id in range(self.python_api_arg_count(api)):
+                    entries.append(
+                        PYTHON_QL_STEP_ENTRY.format(
+                            api_expr=self.python_api_expr(api),
+                            arg_id=arg_id,
+                            call_name=self.ql_string_escape(self.python_call_name(api)),
+                        )
+                    )
+            body = QL_BODY_OR_SEPARATOR.join(entries)
+        return PYTHON_QL_STEP_PREDICATE.format(body=body)
+
+    def cpp_function_name(self, api):
+        method = str(api.get("method", "")).strip()
+        method = re.sub(r"\(.*\)$", "", method)
+        if "::" in method:
+            method = method.split("::")[-1]
+        if "." in method:
+            method = method.split(".")[-1]
+        return method
+
+    def cpp_param_name_and_index(self, raw_arg):
+        raw_arg = str(raw_arg).strip()
+        match = re.fullmatch(r"p?([0-9]+)", raw_arg)
+        if match:
+            return raw_arg, int(match.group(1))
+        return raw_arg, -1
+
+    def cpp_api_arg_count(self, api):
+        signature = str(api.get("signature", ""))
+        match = re.search(r"\((.*)\)", signature)
+        if not match:
+            return 1
+        args = [arg.strip() for arg in match.group(1).split(";") if arg.strip()]
+        if not args:
+            args = [arg.strip() for arg in match.group(1).split(",") if arg.strip()]
+        # C varargs declarations such as sprintf often expose only fixed
+        # parameters in CodeQL metadata; generate a few extra slots so LLM
+        # summaries can cover the user-controlled formatted values.
+        if self.cpp_output_buffer_arg_index(api) >= 0:
+            return max(len(args), 8)
+        return max(len(args), 1)
+
+    def cpp_output_buffer_arg_index(self, api):
+        method = self.cpp_function_name(api)
+        output_first = {
+            "sprintf", "snprintf", "vsprintf", "vsnprintf",
+            "strcpy", "strncpy", "strcat", "strncat",
+            "memcpy", "memmove",
+        }
+        if method in output_first:
+            return 0
+        return -1
+
+    def build_cpp_source_qll_with_enumeration(self):
+        source_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_apis_path)))
+        source_api_entries = [
+            CPP_QL_API_SOURCE_ENTRY.format(
+                function=self.ql_string_escape(self.cpp_function_name(api)),
+            )
+            for api in source_apis
+        ]
+
+        source_params = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_func_params_path)))
+        source_param_entries = []
+        for param_func in source_params:
+            for arg_name in param_func.get("tainted_input", []):
+                param_name, param_index = self.cpp_param_name_and_index(arg_name)
+                source_param_entries.append(
+                    CPP_QL_FUNC_PARAM_SOURCE_ENTRY.format(
+                        function=self.ql_string_escape(self.cpp_function_name(param_func)),
+                        param=self.ql_string_escape(param_name),
+                        param_index=param_index,
+                    )
+                )
+
+        all_entries = source_api_entries + source_param_entries
+        body = QL_BODY_OR_SEPARATOR.join(all_entries) if all_entries else "    1 = 0"
+        return CPP_QL_SOURCE_PREDICATE.format(body=body, additional="")
+
+    def build_cpp_sink_qll_with_enumeration(self):
+        sink_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_sink_apis_path)))
+        sink_entries = []
+        for api in sink_apis:
+            sink_args = api.get("sink_args", ["p0"]) or ["p0"]
+            for sink_arg in sink_args:
+                _, arg_index = self.cpp_param_name_and_index(sink_arg)
+                if arg_index >= 0:
+                    sink_entries.append(
+                        CPP_QL_API_SINK_ARG_ENTRY.format(
+                            function=self.ql_string_escape(self.cpp_function_name(api)),
+                            arg_id=arg_index,
+                        )
+                    )
+        body = QL_BODY_OR_SEPARATOR.join(sink_entries) if sink_entries else "    1 = 0"
+        return CPP_QL_SINK_PREDICATE.format(body=body, additional="")
+
+    def build_cpp_taint_propagator_qll_with_enumeration(self):
+        summary_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_taint_prop_apis_path)))
+        entries = []
+        if len(summary_apis) == 0 or self.no_summary_model:
+            body = "    prev = next and 1 = 0"
+        else:
+            for api in summary_apis:
+                output_arg = self.cpp_output_buffer_arg_index(api)
+                arg_count = self.cpp_api_arg_count(api)
+                for arg_id in range(arg_count):
+                    if arg_id == output_arg:
+                        continue
+                    if output_arg >= 0:
+                        entries.append(
+                            CPP_QL_STEP_ARG_TO_OUTPUT_ARG_ENTRY.format(
+                                function=self.ql_string_escape(self.cpp_function_name(api)),
+                                src_arg_id=arg_id,
+                                dst_arg_id=output_arg,
+                            )
+                        )
+                    else:
+                        entries.append(
+                            CPP_QL_STEP_ARG_TO_RETURN_ENTRY.format(
+                                function=self.ql_string_escape(self.cpp_function_name(api)),
+                                arg_id=arg_id,
+                            )
+                        )
+            body = QL_BODY_OR_SEPARATOR.join(entries) if entries else "    prev = next and 1 = 0"
+        return CPP_QL_STEP_PREDICATE.format(body=body)
+
     def build_source_qll_with_enumeration(self):
+        if self.language == "python":
+            return self.build_python_source_qll_with_enumeration()
+        if self.language == "cpp":
+            return self.build_cpp_source_qll_with_enumeration()
+
         source_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_apis_path)))
         source_api_entries = [
             QL_METHOD_CALL_SOURCE_BODY_ENTRY.format(
@@ -853,6 +1262,11 @@ dependencies:
             f.write(my_source_content)
 
     def build_taint_propagator_qll_with_enumeration(self):
+        if self.language == "python":
+            return self.build_python_taint_propagator_qll_with_enumeration()
+        if self.language == "cpp":
+            return self.build_cpp_taint_propagator_qll_with_enumeration()
+
         summary_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_taint_prop_apis_path)))
 
         if len(summary_apis) == 0 or self.no_summary_model:
@@ -874,6 +1288,11 @@ dependencies:
             f.write(self.build_taint_propagator_qll_with_enumeration())
 
     def build_sink_qll_with_enumeration(self):
+        if self.language == "python":
+            return self.build_python_sink_qll_with_enumeration()
+        if self.language == "cpp":
+            return self.build_cpp_sink_qll_with_enumeration()
+
         sink_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_sink_apis_path)))
         if len(sink_apis) == 0:
             body = "1 = 0"
@@ -937,6 +1356,9 @@ dependencies:
             f.write(my_sink_content)
 
     def build_extension_yml(self):
+        if self.language != "java":
+            return "extensions: []\n"
+
         # First load labelled sources, sinks, and taint-propagators
         source_apis = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_apis_path)))
         source_params = self.filter_invalid_entries(json.load(open(self.llm_labelled_source_func_params_path)))
@@ -984,6 +1406,13 @@ dependencies:
 
         return yml_content
 
+    def get_registered_query_files(self):
+        query_config = QUERIES[self.query]
+        language_config = query_config.get("languages", {}).get(self.language)
+        if language_config is not None:
+            return language_config["queries"]
+        return query_config["queries"]
+
     def build_and_save_extension_yml(self):
         os.makedirs(os.path.dirname(self.spec_yml_path), exist_ok=True)
         with open(self.spec_yml_path, "w") as f:
@@ -1028,9 +1457,10 @@ dependencies:
         self.project_logger.info("  ==> Copying custom queries...")
         codeql_query_dir = f"{self.custom_codeql_root}/{self.query}"
         os.makedirs(codeql_query_dir, exist_ok=True)
-        for q in QUERIES[self.query]["queries"]:
+        query_files = self.get_registered_query_files()
+        for q in query_files:
             query_dest_path = f"{codeql_query_dir}/{q.split('/')[-1]}"
-            if not os.path.exists(query_dest_path):
+            if self.overwrite or self.overwrite_cwe_query_result or not os.path.exists(query_dest_path):
                 shutil.copy(f"{THIS_SCRIPT_DIR}/{q}", query_dest_path)
             self.project_logger.info(f"  ==> Query {q.split('/')[-1]} ready... Done!")
 
@@ -1045,7 +1475,7 @@ dependencies:
         lock_file_path = f"{self.custom_codeql_root}/codeql-pack.lock.yml"
         if not os.path.exists(lock_file_path):
             self.project_logger.error("  ==> Failed to install CodeQL packs (missing codeql-pack.lock.yml); aborting"); return
-        query_filename = QUERIES[self.query]["queries"][0].split("/")[-1]
+        query_filename = query_files[0].split("/")[-1]
         to_run_query_full_path = f"{codeql_query_dir}/{query_filename}"
 
         # Add search paths for both the built-in CodeQL packs and our custom pack
@@ -1155,6 +1585,15 @@ dependencies:
 
     def post_process_cwe_query_result(self):
         self.project_logger.info("==> Stage 7: Post-processing CWE query results...")
+        if self.language != "java":
+            self.project_logger.info("  ==> Using native-language post-processing passthrough...")
+            if not os.path.exists(self.query_output_result_sarif_path):
+                self.project_logger.error("  ==> Result SARIF not found; skipping post-processing...")
+                return
+            if not self.test_run:
+                shutil.copy(self.query_output_result_sarif_path, self.query_output_result_sarif_pp_path)
+            return
+
         original_result_sarif = json.load(open(self.query_output_result_sarif_path))
         alarms = original_result_sarif["runs"][0]["results"]
 
@@ -1192,6 +1631,24 @@ dependencies:
         self.project_logger.info("==> Stage 8: Querying GPT for posthoc filtering...")
         if self.skip_posthoc_filter:
             self.project_logger.info("  ==> Skipping posthoc filter...")
+            return
+
+        if self.language != "java":
+            native_posthoc_pipeline = NativeContextualAnalysisPipeline(
+                query=self.query,
+                language=self.language,
+                cwe_id=self.cwe_id,
+                query_output_result_sarif_path=self.query_output_result_sarif_pp_path,
+                posthoc_filtering_output_path=self.posthoc_filtering_output_path,
+                project_source_code_dir=self.project_source_code_dir,
+                project_logger=self.project_logger,
+                llm=self.llm,
+                batch_size=self.num_threads,
+                overwrite=self.overwrite or self.overwrite_posthoc_filter,
+                seed=self.seed,
+                test_run=self.test_run,
+            )
+            native_posthoc_pipeline.run()
             return
 
         # 1. Extract class and function locations
@@ -1246,7 +1703,7 @@ dependencies:
 
     def evaluate_result(self):
         self.project_logger.info("==> Stage 9: Evaluating results...")
-        if self.skip_evaluation:
+        if self.skip_evaluation or self.language != "java":
             self.project_logger.info("  ==> skipping evaluation...")
             return
 
@@ -1261,6 +1718,8 @@ dependencies:
 
     def debug_result(self):
         if self.test_run:
+            return
+        if self.language != "java":
             return
 
         # Debug source information
@@ -1325,6 +1784,7 @@ if __name__ == '__main__':
     parser.add_argument("project", type=str)
     parser.add_argument("--query", type=str, default="022", required=True)
     parser.add_argument("--llm", type=str, default="gpt-4")
+    parser.add_argument("--language", choices=["java", "python", "cpp"], default="java")
     parser.add_argument("--run-id", type=str, default="default")
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--label-api-batch-size", type=int, default=30)
@@ -1394,6 +1854,7 @@ if __name__ == '__main__':
         debug_sink=args.debug_sink,
         test_run=args.test_run,
         use_container=args.use_container,
+        language=args.language,
     )
 
     pipeline.run()

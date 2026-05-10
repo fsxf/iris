@@ -1,0 +1,7 @@
+name: iris/custom-python-security-queries
+version: 0.0.1
+library: false
+extractor: python
+dependencies:
+  codeql/python-all: "*"
+

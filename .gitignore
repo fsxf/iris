@@ -22,3 +22,8 @@ cloud_config.json
 .anaconda/
 .conda/
 .codex
+docs-local/AGENT-HANDOFF.md
+.handoffWithOthers/
+findings.md
+progress.md
+task_plan.md

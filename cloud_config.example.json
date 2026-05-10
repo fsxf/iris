@@ -1,5 +1,6 @@
 {
   "key": "your-api-key",
   "url": "https://api.deepseek.com",
-  "model": "deepseek-chat"
+  "model": "deepseek-v4-pro",
+  "retries": 3
 }
