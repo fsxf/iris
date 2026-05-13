@@ -21,6 +21,20 @@ predicate hardcodedCredentialInitializer(Expr expr) {
   )
 }
 
+predicate hardcodedByteArrayCredentialInitializer(Expr expr) {
+  exists(Variable variable, ArrayAggregateLiteral literal, HexLiteral hex, string lowerName |
+    expr = variable.getInitializer().getExpr() and
+    expr = literal and
+    lowerName = variable.getName().toLowerCase() and
+    (
+      credentialName(variable.getName())
+      or
+      lowerName = ["key", "aeskey", "secretkey", "encryptionkey", "cipherkey"]
+    ) and
+    literal.getAChild*() = hex
+  )
+}
+
 predicate hardcodedCredentialAssignment(Expr expr) {
   exists(AssignExpr assign, VariableAccess target, string text |
     expr = assign.getRValue() and
@@ -61,6 +75,8 @@ predicate standaloneCredentialLiteral(Expr expr) {
 class HardcodedCredentialFinding extends Expr {
   HardcodedCredentialFinding() {
     hardcodedCredentialInitializer(this)
+    or
+    hardcodedByteArrayCredentialInitializer(this)
     or
     hardcodedCredentialAssignment(this)
     or

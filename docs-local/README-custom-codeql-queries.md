@@ -42,6 +42,7 @@ src/native-codeql-queries/
   java/
     qlpack.yml
     cwe-369/DivideByZero.ql
+    cwe-369/Cwe369ValueFlow.qll
     cwe-434/UnrestrictedFileUpload.ql
 ```
 
@@ -59,6 +60,7 @@ python/cwe-319/CleartextSensitiveHttp.ql
 python/cwe-434/UnrestrictedFileUpload.ql
 cpp/cwe-434/UnrestrictedFileUpload.ql
 cpp/cwe-532/SensitiveInfoLog.ql
+java/cwe-369/DivideByZero.ql
 java/cwe-434/UnrestrictedFileUpload.ql
 ```
 
@@ -68,10 +70,9 @@ java/cwe-434/UnrestrictedFileUpload.ql
 python/cwe-369/DivideByZero.ql
 python/cwe-676/PotentiallyDangerousFunction.ql
 cpp/cwe-798/HardcodedCredentials.ql
-java/cwe-369/DivideByZero.ql
 ```
 
-这些保留为 `problem` 是有意的：除零、危险函数调用、硬编码凭证更像单点模式匹配或局部结构告警，没有自然的 source -> sink 数据流。强行改成 `path-problem` 会制造不真实的路径，反而影响后续 LLM 后审可信度。
+这些保留为 `problem` 是有意的：部分除零、危险函数调用、硬编码凭证更像单点模式匹配或局部结构告警，没有自然的 source -> sink 数据流。强行改成 `path-problem` 会制造不真实的路径，反而影响后续 LLM 后审可信度。Java CWE-369 已按 2026-05-13 交付物更新为 `path-problem`，通过 `Cwe369ValueFlow.qll` 表达 may-zero source 到 denominator sink 的数据流。
 
 ## 四、如何运行
 
@@ -133,4 +134,3 @@ Java：
 output/<project>/common/cwe-XXXwCodeQLCustom/results.csv
 output/<project>/common/cwe-XXXwCodeQLCustom/results.sarif
 ```
-

@@ -46,6 +46,26 @@ predicate lowValueCredentialText(string text) {
       or lower.matches("%masked%")
       or lower.matches("%xxxx%")
       or lower.matches("%****%")
+      or lower.matches("%_env%")
+      or lower.matches("%environment%")
+      or lower.regexpMatch(".*password: *$")
+      or lower.regexpMatch(".*username: *$")
+      or lower.regexpMatch("(?s).*admin token: *%[0-9.]*[sdux].*")
+      or lower.regexpMatch("(?s).*token: *%[0-9.]*[sdux].*")
+      or lower.matches("%invalid username or password%")
+      or lower.regexpMatch("(?s).*%[0-9.]*[sdux].*")
+    )
+  )
+}
+
+bindingset[text]
+predicate publicBrowserApiKeyText(string text) {
+  exists(string lower |
+    lower = text.toLowerCase() and
+    (
+      lower.matches("%maps.googleapis.com%")
+      or lower.matches("%googleapis.com/maps%")
+      or lower.matches("%callback=initmap%")
     )
   )
 }
@@ -56,7 +76,8 @@ predicate credentialName(string name) {
   not name.toLowerCase().matches("%file%") and
   not name.toLowerCase().matches("%path%") and
   not name.toLowerCase().matches("%hash%") and
-  not name.toLowerCase().matches("%crypt%")
+  not name.toLowerCase().matches("%crypt%") and
+  not name.toLowerCase().matches("%google%maps%")
 }
 
 predicate exprContains(Expr outer, Expr inner) {
@@ -70,13 +91,15 @@ predicate hardcodedString(Expr expr, string text) {
     exprContains(expr, literal) and
     text = literal.getValue() and
     text.length() > 5 and
-    not lowValueCredentialText(text)
+    not lowValueCredentialText(text) and
+    not publicBrowserApiKeyText(text)
   )
 }
 
 bindingset[text]
 predicate strongCredentialLiteral(string text) {
   not lowValueCredentialText(text) and
+  not publicBrowserApiKeyText(text) and
   (
     credentialKeyword(text) and text.length() > 8 and (text.matches("%=%") or text.matches("%:%"))
     or text.matches("%AKIA%")

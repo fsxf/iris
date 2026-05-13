@@ -46,6 +46,30 @@ predicate isUploadFileParameter(DataFlow::ParameterNode parameter) {
   parameter.getParameter().getAnnotation() = uploadFileType().getAValueReachableFromSource().asExpr()
 }
 
+predicate isUploadFieldKey(SubscriptNode subscript) {
+  subscript.getIndex().getNode().(StringLiteral).getText() in ["filename", "body", "content_type"]
+  or
+  subscript.getIndex().getNode().(StringLiteral).getS() in ["filename", "body", "content_type"]
+}
+
+predicate isTornadoRequestFilesSubscript(SubscriptNode subscript) {
+  subscript.getObject().toString().regexpMatch("(?i).*request\\.files.*")
+  or
+  subscript.getObject().toString().regexpMatch("(?i).*\\.files.*")
+}
+
+predicate isTornadoUploadField(DataFlow::Node source) {
+  exists(SubscriptNode subscript |
+    source.asCfgNode() = subscript and
+    (
+      isTornadoRequestFilesSubscript(subscript)
+      or
+      isUploadFieldKey(subscript) and
+      subscript.getObject().toString().regexpMatch("(?i).*(file|upload).*")
+    )
+  )
+}
+
 predicate isUploadSource(DataFlow::Node source) {
   source = flaskRequestFile().asSource()
   or
@@ -73,6 +97,8 @@ predicate isUploadSource(DataFlow::Node source) {
     call.calls(parameter, ["read", "seek"]) and
     isUploadFileParameter(parameter)
   )
+  or
+  isTornadoUploadField(source)
   or
   exists(DataFlow::AttrRead attr |
     source = attr and
@@ -103,6 +129,8 @@ predicate isDiskWriteSink(DataFlow::Node sink) {
   )
   or
   sink = API::builtin("open").getACall().getArg(0)
+  or
+  sink = API::moduleImport("io").getMember("open").getACall().getArg(0)
   or
   sink = API::moduleImport("os").getMember("open").getACall().getArg(0)
   or
