@@ -211,4 +211,4 @@ sink = system(command)
 - 中间 steps 会保留 SARIF message，例如 `(*access to array)`、`(sprintf output argument)`，这样同一源码行上的不同数据流节点也能区分。
 - 远程模型统一通过 `--llm cloud` 进入云端适配器；真实请求使用仓库根目录 `cloud_config.json` 的 `model` 字段。
 - 当前实现没有破坏 Java 原 posthoc；Java 仍走原 `ContextualAnalysisPipeline`。
-- Python / C/C++ 的 LLM 打标签路线已经复用了这套 native posthoc；目前 `cwe-022wLLM`、`cwe-078wLLM`、`cwe-079wLLM`、`cwe-089wLLM`、`cwe-094wLLM`、`cwe-918wLLM` 均可产出对应的 posthoc 结果。
+- Python / C/C++ 的 LLM 打标签路线已经复用了这套 native posthoc；目前 `cwe-022wLLM`、`cwe-078wLLM`、`cwe-079wLLM`、`cwe-089wLLM`、`cwe-094wLLM`、`cwe-502wLLM`、`cwe-918wLLM` 均可产出对应的 posthoc 结果。

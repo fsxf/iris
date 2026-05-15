@@ -819,6 +819,112 @@ cookie. Logging functions are NOT sinks for XSS attacks.""",
       "cwe-queries/java/cwe-502/MyUnsafeDeserialization.ql",
       "cwe-queries/java/cwe-502/MyUnsafeDeserializationQuery.qll"
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-502/cwe-502wLLM.ql",
+          "cwe-queries/python/cwe-502/MyUnsafeDeserializationQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "input",
+              "signature": "input(prompt)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "pickle",
+              "class": "module",
+              "method": "loads",
+              "signature": "pickle.loads(data, /, *, fix_imports=True, encoding='ASCII', errors='strict', buffers=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "yaml",
+              "class": "module",
+              "method": "load",
+              "signature": "yaml.load(stream, Loader=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "marshal",
+              "class": "module",
+              "method": "loads",
+              "signature": "marshal.loads(bytes)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "base64",
+              "class": "module",
+              "method": "b64decode",
+              "signature": "base64.b64decode(s, altchars=None, validate=False)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-502 unsafe deserialization, focus on parameters that can influence serialized object bytes, YAML/XML/JSON payloads with type metadata, object graph data, or class/type descriptors passed to deserialization APIs. Do not treat safe JSON parsing into plain dictionaries/lists as a sink unless it instantiates attacker-controlled classes or types."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-502/cwe-502wLLM.ql",
+          "cwe-queries/cpp/cwe-502/MyUnsafeDeserializationQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "application",
+              "class": "function",
+              "method": "main",
+              "signature": "main(argc;argv)",
+              "tainted_input": ["argv"],
+              "type": "source",
+            },
+            {
+              "package": "boost.serialization",
+              "class": "archive",
+              "method": "operator>>",
+              "signature": "archive >> object",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "yaml-cpp",
+              "class": "function",
+              "method": "YAML::Load",
+              "signature": "YAML::Load(input)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "protobuf",
+              "class": "MessageLite",
+              "method": "ParseFromString",
+              "signature": "ParseFromString(data)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "snprintf",
+              "signature": "snprintf(buffer;size;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-502 unsafe deserialization, focus on parameters that can influence serialized object buffers, archive streams, YAML/XML/JSON payloads with type metadata, object graph data, or attacker-controlled class/type descriptors passed to deserialization APIs. Do not treat simple parsing of inert data formats as a sink unless it can instantiate attacker-controlled objects, classes, or callbacks."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-502",
       "desc": "Deserialization of Untrusted Data",

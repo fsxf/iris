@@ -10,7 +10,14 @@ from src.iris import SAPipeline
 
 
 RUN_ID = "llm-multi-cwe-manual"
-QUERIES = ["cwe-022wLLM", "cwe-079wLLM", "cwe-089wLLM", "cwe-094wLLM", "cwe-918wLLM"]
+QUERIES = [
+    "cwe-022wLLM",
+    "cwe-079wLLM",
+    "cwe-089wLLM",
+    "cwe-094wLLM",
+    "cwe-502wLLM",
+    "cwe-918wLLM",
+]
 
 
 PY_SOURCE_INPUT = [
@@ -86,6 +93,21 @@ PY_CONFIG = {
                 "class": "module",
                 "method": "eval",
                 "signature": "eval(expression, globals=None, locals=None)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": [],
+    },
+    "cwe-502wLLM": {
+        "sources": PY_SOURCE_INPUT,
+        "sinks": [
+            {
+                "package": "pickle",
+                "class": "module",
+                "method": "pickle.loads",
+                "signature": "pickle.loads(data)",
                 "sink_args": ["p0"],
                 "type": "sink",
             }
@@ -188,6 +210,21 @@ CPP_CONFIG = {
                 "class": "function",
                 "method": "PyRun_SimpleString",
                 "signature": "PyRun_SimpleString(command)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": CPP_SOURCE_MAIN_ARGV,
+    },
+    "cwe-502wLLM": {
+        "sources": [],
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "deserialize_untrusted",
+                "signature": "deserialize_untrusted(data)",
                 "sink_args": ["p0"],
                 "type": "sink",
             }

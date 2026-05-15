@@ -1,4 +1,5 @@
 import os
+import pickle
 import sqlite3
 import urllib.request
 
@@ -27,6 +28,10 @@ def code_injection(expr):
     return eval(expr)
 
 
+def unsafe_deserialization(payload):
+    return pickle.loads(payload)
+
+
 def ssrf(url):
     return urllib.request.urlopen(url).read()
 
@@ -42,6 +47,7 @@ def main():
     query = value
     execute_query(query)
     code_injection(value)
+    unsafe_deserialization(value)
     ssrf(value)
     xss(value)
 

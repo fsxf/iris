@@ -3,6 +3,7 @@
 
 int sqlite3_exec(void *db, const char *sql, void *callback, void *arg, char **errmsg);
 int PyRun_SimpleString(const char *command);
+int deserialize_untrusted(const char *data);
 int curl_easy_setopt(void *curl, int option, const char *parameter);
 void send_html(const char *body);
 
@@ -25,6 +26,10 @@ void code_injection(char *expr) {
     PyRun_SimpleString(expr);
 }
 
+void unsafe_deserialization(char *payload) {
+    deserialize_untrusted(payload);
+}
+
 void ssrf(char *url) {
     curl_easy_setopt(NULL, CURLOPT_URL, url);
 }
@@ -40,6 +45,7 @@ int main(int argc, char **argv) {
         path_traversal(argv[1]);
         sql_injection(argv[1]);
         code_injection(argv[1]);
+        unsafe_deserialization(argv[1]);
         ssrf(argv[1]);
         xss(argv[1]);
     }
