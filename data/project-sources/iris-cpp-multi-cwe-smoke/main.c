@@ -4,6 +4,7 @@
 int sqlite3_exec(void *db, const char *sql, void *callback, void *arg, char **errmsg);
 int PyRun_SimpleString(const char *command);
 int curl_easy_setopt(void *curl, int option, const char *parameter);
+void send_html(const char *body);
 
 #define CURLOPT_URL 10002
 
@@ -28,12 +29,19 @@ void ssrf(char *url) {
     curl_easy_setopt(NULL, CURLOPT_URL, url);
 }
 
+void xss(char *name) {
+    char page[512] = {0};
+    snprintf(page, sizeof(page), "<p>Hello %s</p>", name);
+    send_html(page);
+}
+
 int main(int argc, char **argv) {
     if (argc > 1) {
         path_traversal(argv[1]);
         sql_injection(argv[1]);
         code_injection(argv[1]);
         ssrf(argv[1]);
+        xss(argv[1]);
     }
     return 0;
 }

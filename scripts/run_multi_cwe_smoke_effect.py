@@ -10,7 +10,7 @@ from src.iris import SAPipeline
 
 
 RUN_ID = "llm-multi-cwe-manual"
-QUERIES = ["cwe-022wLLM", "cwe-089wLLM", "cwe-094wLLM", "cwe-918wLLM"]
+QUERIES = ["cwe-022wLLM", "cwe-079wLLM", "cwe-089wLLM", "cwe-094wLLM", "cwe-918wLLM"]
 
 
 PY_SOURCE_INPUT = [
@@ -56,6 +56,21 @@ PY_CONFIG = {
                 "class": "function",
                 "method": "execute_query",
                 "signature": "execute_query(query)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": [],
+    },
+    "cwe-079wLLM": {
+        "sources": PY_SOURCE_INPUT,
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "send_html",
+                "signature": "send_html(body)",
                 "sink_args": ["p0"],
                 "type": "sink",
             }
@@ -148,6 +163,21 @@ CPP_CONFIG = {
             }
         ],
         "steps": [],
+        "params": CPP_SOURCE_MAIN_ARGV,
+    },
+    "cwe-079wLLM": {
+        "sources": [],
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "send_html",
+                "signature": "send_html(body)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": CPP_SNPRINTF,
         "params": CPP_SOURCE_MAIN_ARGV,
     },
     "cwe-094wLLM": {

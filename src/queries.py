@@ -629,6 +629,104 @@ the organization.""",
       "cwe-queries/java/cwe-079/MyXssQuery.qll",
       "cwe-queries/java/cwe-079/MyXssLocalQuery.qll",
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-079/cwe-079wLLM.ql",
+          "cwe-queries/python/cwe-079/MyXssQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "flask",
+              "class": "Request",
+              "method": "args.get",
+              "signature": "request.args.get(name)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "flask",
+              "class": "module",
+              "method": "render_template_string",
+              "signature": "render_template_string(source, **context)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "django.http",
+              "class": "HttpResponse",
+              "method": "HttpResponse",
+              "signature": "HttpResponse(content='', *args, **kwargs)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "markupsafe",
+              "class": "Markup",
+              "method": "Markup",
+              "signature": "Markup(base='')",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "str",
+              "class": "str",
+              "method": "format",
+              "signature": "str.format(*args, **kwargs)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-079 XSS, focus on parameters that can influence HTML, JavaScript, template strings, response bodies, or values explicitly marked safe before being returned to a browser. Taint propagators should preserve data toward HTML/template/response output; do not label generic HTTP client APIs, file/network fetch APIs, or logging APIs as XSS propagators unless their return value is directly intended to be rendered into browser-visible content. Do not treat logging-only APIs as XSS sinks."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-079/cwe-079wLLM.ql",
+          "cwe-queries/cpp/cwe-079/MyXssQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "application",
+              "class": "function",
+              "method": "main",
+              "signature": "main(argc;argv)",
+              "tainted_input": ["argv"],
+              "type": "source",
+            },
+            {
+              "package": "cgi",
+              "class": "function",
+              "method": "printf",
+              "signature": "printf(format;...)",
+              "sink_args": ["p1"],
+              "type": "sink",
+            },
+            {
+              "package": "cpp-httplib",
+              "class": "Response",
+              "method": "set_content",
+              "signature": "set_content(body;content_type)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "snprintf",
+              "signature": "snprintf(buffer;size;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-079 XSS, focus on parameters that can influence HTML, JavaScript, template output, HTTP response bodies, CGI output, or values written to browser-rendered content. Taint propagators should preserve data toward HTML/template/response output; do not label generic HTTP client APIs, file/network fetch APIs, or logging APIs as XSS propagators unless their return value is directly intended to be rendered into browser-visible content. Do not treat logging-only APIs as XSS sinks."
+        }
+      }
+    },
     "prompts": {
       "cwe-id": "CWE-079",
       "desc": "Cross-Site Scripting",
@@ -1200,7 +1298,7 @@ Sources typically include untrusted HTTP request parameters (such as 'callback')
       "desc": "Improper Restriction of XML External Entity Reference",
       "long_desc": """\
         XML documents optionally contain a Document Type Definition (DTD), which, among other features, enables the definition of XML entities. It is possible to define an entity by providing a substitution string in the form of a URI. The XML parser can access the contents of this URI and embed these contents back into the XML document for further processing. \
-By submitting an XML file that defines an external entity with a file:// URI, an attacker can cause the processing application to read the contents of a local file. For example, a URI such as "file:///c:/winnt/win.ini" designates (in Windows) the file C:\Winnt\win.ini, or file:///etc/passwd designates the password file in Unix-based systems. Using URIs with other schemes such as http://, the attacker can force the application to make outgoing requests to servers that the attacker cannot reach directly, which can be used to bypass firewall restrictions or hide the source of attacks such as port scanning.\
+By submitting an XML file that defines an external entity with a file:// URI, an attacker can cause the processing application to read the contents of a local file. For example, a URI such as "file:///c:/winnt/win.ini" designates (in Windows) the file C:\\Winnt\\win.ini, or file:///etc/passwd designates the password file in Unix-based systems. Using URIs with other schemes such as http://, the attacker can force the application to make outgoing requests to servers that the attacker cannot reach directly, which can be used to bypass firewall restrictions or hide the source of attacks such as port scanning.\
 Once the content of the URI is read, it is fed back into the application that is processing the XML. This application may echo back the data (e.g. in an error message), thereby exposing the file contents.""",
       "examples": [ 
         {

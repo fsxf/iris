@@ -18,15 +18,15 @@ Python: language=python, query=cwe-078wLLM, project=iris-python-smoke
 C/C++ : language=cpp,    query=cwe-078wLLM, project=iris-cpp-smoke
 
 已完整 cloud + posthoc 验证:
-Python: cwe-022wLLM, cwe-089wLLM, cwe-094wLLM, cwe-918wLLM
-C/C++ : cwe-022wLLM, cwe-089wLLM, cwe-094wLLM, cwe-918wLLM
+Python: cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-918wLLM
+C/C++ : cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-918wLLM
 ```
 
 说明：
 
 ```text
 CWE-078 已经跑过端到端 LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤。
-CWE-022 / 089 / 094 / 918 已经在 Python 与 C/C++ smoke 项目上跑过完整 cloud LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤，并确认有真实告警和 raw prompt/response 日志。
+CWE-022 / 079 / 089 / 094 / 918 已经在 Python 与 C/C++ smoke 项目上跑过完整 cloud LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤，并确认有真实告警和 raw prompt/response 日志。
 ```
 
 ## 当前能力
@@ -71,6 +71,8 @@ src/cwe-queries/python/cwe-078/cwe-078wLLM.ql
 src/cwe-queries/python/cwe-078/MyCommandInjectionQuery.qll
 src/cwe-queries/python/cwe-022/cwe-022wLLM.ql
 src/cwe-queries/python/cwe-022/MyTaintedPathQuery.qll
+src/cwe-queries/python/cwe-079/cwe-079wLLM.ql
+src/cwe-queries/python/cwe-079/MyXssQuery.qll
 src/cwe-queries/python/cwe-089/cwe-089wLLM.ql
 src/cwe-queries/python/cwe-089/MySqlInjectionQuery.qll
 src/cwe-queries/python/cwe-094/cwe-094wLLM.ql
@@ -82,6 +84,8 @@ src/cwe-queries/cpp/cwe-078/cwe-078wLLM.ql
 src/cwe-queries/cpp/cwe-078/MyCommandInjectionQuery.qll
 src/cwe-queries/cpp/cwe-022/cwe-022wLLM.ql
 src/cwe-queries/cpp/cwe-022/MyTaintedPathQuery.qll
+src/cwe-queries/cpp/cwe-079/cwe-079wLLM.ql
+src/cwe-queries/cpp/cwe-079/MyXssQuery.qll
 src/cwe-queries/cpp/cwe-089/cwe-089wLLM.ql
 src/cwe-queries/cpp/cwe-089/MySqlInjectionQuery.qll
 src/cwe-queries/cpp/cwe-094/cwe-094wLLM.ql
@@ -166,6 +170,7 @@ export PATH=/home/lifew/iris/codeql:$PATH
 
 ```text
 cwe-022wLLM
+cwe-079wLLM
 cwe-089wLLM
 cwe-094wLLM
 cwe-918wLLM
@@ -354,10 +359,12 @@ LLM backend    = --llm cloud
 | 语言 | CWE | run-id | CodeQL CSV 行数 | posthoc CSV 行数 | posthoc raw 日志数 |
 |---|---:|---|---:|---:|---:|
 | Python | 022 | `llm-python-cwe022-cloud-full` | 2 | 3 | 6 |
+| Python | 079 | `llm-python-cwe079-cloud-full` | 3 | 4 | 6 |
 | Python | 089 | `llm-python-cwe089-cloud-full` | 4 | 5 | 10 |
 | Python | 094 | `llm-python-cwe094-cloud-full` | 2 | 3 | 6 |
 | Python | 918 | `llm-python-cwe918-cloud-full` | 2 | 3 | 6 |
 | C/C++ | 022 | `llm-cpp-cwe022-cloud-full` | 4 | 5 | 10 |
+| C/C++ | 079 | `llm-cpp-cwe079-cloud-full` | 3 | 4 | 6 |
 | C/C++ | 089 | `llm-cpp-cwe089-cloud-full` | 1 | 2 | 4 |
 | C/C++ | 094 | `llm-cpp-cwe094-cloud-full` | 2 | 3 | 6 |
 | C/C++ | 918 | `llm-cpp-cwe918-cloud-full` | 2 | 3 | 6 |
@@ -381,7 +388,7 @@ LLM backend    = --llm cloud
 ## 当前边界
 
 - 当前 Python / C/C++ 已完整端到端验证 CWE-078。
-- 当前 Python / C/C++ 已完整端到端验证 CWE-022、CWE-089、CWE-094、CWE-918。
+- 当前 Python / C/C++ 已完整端到端验证 CWE-022、CWE-079、CWE-089、CWE-094、CWE-918。
 - Python `MySummaries.qll` 当前采用保守的 IRIS 风格：默认参数流向返回值，可能扩大召回，后续依赖 posthoc 降噪。
 - C/C++ `MySummaries.qll` 当前覆盖常见返回值传播和输出 buffer 传播，后续其他 CWE 可能需要补充更多 API 传播形态。
 - C/C++ 项目构建仍依赖 CodeQL DB 是否正确构建；有编译需求的项目需要提供 build command 或可用的 `make/cmake/gcc/g++` 环境。

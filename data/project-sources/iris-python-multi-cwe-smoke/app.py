@@ -3,6 +3,10 @@ import sqlite3
 import urllib.request
 
 
+def send_html(body):
+    return "<html><body>" + body + "</body></html>"
+
+
 def execute_query(query):
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
@@ -27,6 +31,11 @@ def ssrf(url):
     return urllib.request.urlopen(url).read()
 
 
+def xss(name):
+    page = "<p>Hello " + name + "</p>"
+    return send_html(page)
+
+
 def main():
     value = input("value: ")
     path_traversal(value)
@@ -34,6 +43,7 @@ def main():
     execute_query(query)
     code_injection(value)
     ssrf(value)
+    xss(value)
 
 
 if __name__ == "__main__":
