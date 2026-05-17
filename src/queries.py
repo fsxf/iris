@@ -1351,6 +1351,104 @@ CWE-807 refers that the product uses a protection mechanism that relies on the e
     "cwe-queries/java/cwe-352/MyJsonpInjectionLib.qll",
     "cwe-queries/java/cwe-352/MyJsonStringLib.qll",
   ],
+  "languages": {
+    "python": {
+      "queries": [
+        "cwe-queries/python/cwe-352/cwe-352wLLM.ql",
+        "cwe-queries/python/cwe-352/MyJsonpInjectionQuery.qll"
+      ],
+      "renderer": "python",
+      "prompts": {
+        "api_examples": [
+          {
+            "package": "builtins",
+            "class": "module",
+            "method": "input",
+            "signature": "input(prompt)",
+            "sink_args": [],
+            "type": "source",
+          },
+          {
+            "package": "flask",
+            "class": "request",
+            "method": "args.get",
+            "signature": "flask.request.args.get(key, default=None, type=None)",
+            "sink_args": [],
+            "type": "source",
+          },
+          {
+            "package": "application",
+            "class": "function",
+            "method": "send_jsonp",
+            "signature": "send_jsonp(body)",
+            "sink_args": ["p0"],
+            "type": "sink",
+          },
+          {
+            "package": "flask",
+            "class": "module",
+            "method": "Response",
+            "signature": "flask.Response(response=None, status=None, headers=None, mimetype=None)",
+            "sink_args": ["p0"],
+            "type": "sink",
+          },
+          {
+            "package": "builtins",
+            "class": "str",
+            "method": "format",
+            "signature": "str.format(*args, **kwargs)",
+            "sink_args": [],
+            "type": "taint-propagator",
+          },
+        ],
+        "function_param_hint": "For CWE-352 in this IRIS template, follow the Java JSONP Injection shape: focus on callback or function-name parameters that can be concatenated into a JavaScript/JSONP response such as callback + '(' + json + ')' and returned to a browser. Treat JSONP response writers or script-like response builders as sinks when the callback-bearing response body reaches them. Do not broaden this to generic CSRF token checks, ordinary HTML responses, redirects, or unrelated request handlers unless they construct JSONP/callback JavaScript from attacker-controlled input."
+      }
+    },
+    "cpp": {
+      "queries": [
+        "cwe-queries/cpp/cwe-352/cwe-352wLLM.ql",
+        "cwe-queries/cpp/cwe-352/MyJsonpInjectionQuery.qll"
+      ],
+      "renderer": "cpp",
+      "prompts": {
+        "api_examples": [
+          {
+            "package": "application",
+            "class": "function",
+            "method": "main",
+            "signature": "main(argc;argv)",
+            "tainted_input": ["argv"],
+            "type": "source",
+          },
+          {
+            "package": "application",
+            "class": "function",
+            "method": "send_jsonp",
+            "signature": "send_jsonp(body)",
+            "sink_args": ["p0"],
+            "type": "sink",
+          },
+          {
+            "package": "web-framework",
+            "class": "function",
+            "method": "send_response",
+            "signature": "send_response(body)",
+            "sink_args": ["p0"],
+            "type": "sink",
+          },
+          {
+            "package": "libc",
+            "class": "function",
+            "method": "snprintf",
+            "signature": "snprintf(buffer;size;format;...)",
+            "sink_args": [],
+            "type": "taint-propagator",
+          },
+        ],
+        "function_param_hint": "For CWE-352 in this IRIS template, follow the Java JSONP Injection shape: focus on callback or function-name parameters that can be formatted into JavaScript/JSONP response bodies such as \"%s({...})\" and returned to a browser. Treat response writer functions as sinks when the callback-bearing body reaches them. Do not broaden this to generic CSRF token checks, ordinary HTML responses, redirects, or unrelated handlers unless they construct JSONP/callback JavaScript from attacker-controlled input."
+      }
+    }
+  },
   "prompts": {
     "cwe_id": "CWE-352",
     "desc": "Cross-Site Request Forgery (JSONP Injection)",
@@ -1399,6 +1497,112 @@ Sources typically include untrusted HTTP request parameters (such as 'callback')
       "cwe-queries/java/cwe-611/MyXxeQuery.qll",
       "cwe-queries/java/cwe-611/MyXxe.qll"
     ],
+    "languages": {
+      "python": {
+        "queries": [
+          "cwe-queries/python/cwe-611/cwe-611wLLM.ql",
+          "cwe-queries/python/cwe-611/MyXxeQuery.qll"
+        ],
+        "renderer": "python",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "builtins",
+              "class": "module",
+              "method": "input",
+              "signature": "input(prompt)",
+              "sink_args": [],
+              "type": "source",
+            },
+            {
+              "package": "xml.dom.minidom",
+              "class": "module",
+              "method": "parseString",
+              "signature": "xml.dom.minidom.parseString(string, parser=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "lxml.etree",
+              "class": "module",
+              "method": "fromstring",
+              "signature": "lxml.etree.fromstring(text, parser=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "xml.sax",
+              "class": "module",
+              "method": "parseString",
+              "signature": "xml.sax.parseString(string, handler, errorHandler=None)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "base64",
+              "class": "module",
+              "method": "b64decode",
+              "signature": "base64.b64decode(s, altchars=None, validate=False)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-611 XXE, focus on parameters that can influence XML document text, XML byte streams, parser input sources, DTD/entity definitions, or parser configuration passed to XML parsing APIs. Treat XML parsers that may load DTDs or resolve external entities as sinks. Do not treat safe XML serialization or XML output-only APIs as sinks."
+        }
+      },
+      "cpp": {
+        "queries": [
+          "cwe-queries/cpp/cwe-611/cwe-611wLLM.ql",
+          "cwe-queries/cpp/cwe-611/MyXxeQuery.qll"
+        ],
+        "renderer": "cpp",
+        "prompts": {
+          "api_examples": [
+            {
+              "package": "application",
+              "class": "function",
+              "method": "main",
+              "signature": "main(argc;argv)",
+              "tainted_input": ["argv"],
+              "type": "source",
+            },
+            {
+              "package": "libxml2",
+              "class": "function",
+              "method": "xmlReadMemory",
+              "signature": "xmlReadMemory(buffer;size;url;encoding;options)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libxml2",
+              "class": "function",
+              "method": "xmlParseDoc",
+              "signature": "xmlParseDoc(cur)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "xerces-c",
+              "class": "XercesDOMParser",
+              "method": "parse",
+              "signature": "parse(source)",
+              "sink_args": ["p0"],
+              "type": "sink",
+            },
+            {
+              "package": "libc",
+              "class": "function",
+              "method": "snprintf",
+              "signature": "snprintf(buffer;size;format;...)",
+              "sink_args": [],
+              "type": "taint-propagator",
+            },
+          ],
+          "function_param_hint": "For CWE-611 XXE, focus on parameters that can influence XML document buffers, XML byte streams, input sources, DTD/entity definitions, or parser configuration passed to XML parsing APIs such as libxml2, Xerces, Expat, or project XML parser wrappers. Treat parsers that may load DTDs or resolve external entities as sinks. Do not treat XML output-only APIs as sinks."
+        }
+      }
+    },
     "prompts": {
       "cwe_id": "CWE-611",
       "desc": "Improper Restriction of XML External Entity Reference",

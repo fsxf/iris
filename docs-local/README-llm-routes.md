@@ -18,15 +18,16 @@ Python: language=python, query=cwe-078wLLM, project=iris-python-smoke
 C/C++ : language=cpp,    query=cwe-078wLLM, project=iris-cpp-smoke
 
 已完整 cloud + posthoc 验证:
-Python: cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-502wLLM, cwe-918wLLM
-C/C++ : cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-502wLLM, cwe-918wLLM
+Python: cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-352wLLM, cwe-502wLLM, cwe-611wLLM, cwe-918wLLM
+C/C++ : cwe-022wLLM, cwe-079wLLM, cwe-089wLLM, cwe-094wLLM, cwe-352wLLM, cwe-502wLLM, cwe-611wLLM, cwe-918wLLM
 ```
 
 说明：
 
 ```text
 CWE-078 已经跑过端到端 LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤。
-CWE-022 / 079 / 089 / 094 / 502 / 918 已经在 Python 与 C/C++ smoke 项目上跑过完整 cloud LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤，并确认有真实告警和 raw prompt/response 日志。
+CWE-022 / 079 / 089 / 094 / 352 / 502 / 611 / 918 已经在 Python 与 C/C++ smoke 项目上跑过完整 cloud LLM 打标签、动态 QLL 生成、CodeQL 查询、posthoc 过滤，并确认有真实告警和 raw prompt/response 日志。
+CWE-352 当前沿用 Java 模板的 JSONP Injection / callback injection 语义，不代表泛化的 CSRF token/状态变更规则。
 ```
 
 ## 当前能力
@@ -77,8 +78,12 @@ src/cwe-queries/python/cwe-089/cwe-089wLLM.ql
 src/cwe-queries/python/cwe-089/MySqlInjectionQuery.qll
 src/cwe-queries/python/cwe-094/cwe-094wLLM.ql
 src/cwe-queries/python/cwe-094/MyCodeInjectionQuery.qll
+src/cwe-queries/python/cwe-352/cwe-352wLLM.ql
+src/cwe-queries/python/cwe-352/MyJsonpInjectionQuery.qll
 src/cwe-queries/python/cwe-502/cwe-502wLLM.ql
 src/cwe-queries/python/cwe-502/MyUnsafeDeserializationQuery.qll
+src/cwe-queries/python/cwe-611/cwe-611wLLM.ql
+src/cwe-queries/python/cwe-611/MyXxeQuery.qll
 src/cwe-queries/python/cwe-918/cwe-918wLLM.ql
 src/cwe-queries/python/cwe-918/MyRequestForgeryQuery.qll
 
@@ -92,8 +97,12 @@ src/cwe-queries/cpp/cwe-089/cwe-089wLLM.ql
 src/cwe-queries/cpp/cwe-089/MySqlInjectionQuery.qll
 src/cwe-queries/cpp/cwe-094/cwe-094wLLM.ql
 src/cwe-queries/cpp/cwe-094/MyCodeInjectionQuery.qll
+src/cwe-queries/cpp/cwe-352/cwe-352wLLM.ql
+src/cwe-queries/cpp/cwe-352/MyJsonpInjectionQuery.qll
 src/cwe-queries/cpp/cwe-502/cwe-502wLLM.ql
 src/cwe-queries/cpp/cwe-502/MyUnsafeDeserializationQuery.qll
+src/cwe-queries/cpp/cwe-611/cwe-611wLLM.ql
+src/cwe-queries/cpp/cwe-611/MyXxeQuery.qll
 src/cwe-queries/cpp/cwe-918/cwe-918wLLM.ql
 src/cwe-queries/cpp/cwe-918/MyRequestForgeryQuery.qll
 ```
@@ -177,7 +186,9 @@ cwe-022wLLM
 cwe-079wLLM
 cwe-089wLLM
 cwe-094wLLM
+cwe-352wLLM
 cwe-502wLLM
+cwe-611wLLM
 cwe-918wLLM
 ```
 
@@ -367,13 +378,17 @@ LLM backend    = --llm cloud
 | Python | 079 | `llm-python-cwe079-cloud-full` | 3 | 4 | 6 |
 | Python | 089 | `llm-python-cwe089-cloud-full` | 4 | 5 | 10 |
 | Python | 094 | `llm-python-cwe094-cloud-full` | 2 | 3 | 6 |
+| Python | 352 | `llm-python-cwe352-cloud-full` | 3 | 4 | 4 |
 | Python | 502 | `llm-python-cwe502-cloud-full` | 3 | 4 | 6 |
+| Python | 611 | `llm-python-cwe611-cloud-full` | 3 | 4 | 6 |
 | Python | 918 | `llm-python-cwe918-cloud-full` | 2 | 3 | 6 |
 | C/C++ | 022 | `llm-cpp-cwe022-cloud-full` | 4 | 5 | 10 |
 | C/C++ | 079 | `llm-cpp-cwe079-cloud-full` | 3 | 4 | 6 |
 | C/C++ | 089 | `llm-cpp-cwe089-cloud-full` | 1 | 2 | 4 |
 | C/C++ | 094 | `llm-cpp-cwe094-cloud-full` | 2 | 3 | 6 |
+| C/C++ | 352 | `llm-cpp-cwe352-cloud-full` | 4 | 5 | 8 |
 | C/C++ | 502 | `llm-cpp-cwe502-cloud-full` | 3 | 4 | 6 |
+| C/C++ | 611 | `llm-cpp-cwe611-cloud-full` | 3 | 4 | 6 |
 | C/C++ | 918 | `llm-cpp-cwe918-cloud-full` | 2 | 3 | 6 |
  
 这些 run 均已确认存在：
@@ -395,7 +410,8 @@ LLM backend    = --llm cloud
 ## 当前边界
 
 - 当前 Python / C/C++ 已完整端到端验证 CWE-078。
-- 当前 Python / C/C++ 已完整端到端验证 CWE-022、CWE-079、CWE-089、CWE-094、CWE-502、CWE-918。
+- 当前 Python / C/C++ 已完整端到端验证 CWE-022、CWE-079、CWE-089、CWE-094、CWE-352、CWE-502、CWE-611、CWE-918。
+- `cwe-352wLLM` 当前按 Java 原查询实现为 JSONP Injection / callback injection：重点是 attacker-controlled callback/function name 被拼进 JSONP JavaScript 响应并返回浏览器；暂未覆盖泛化 CSRF token 缺失、跨站状态变更、SameSite/CORS 等非 taint-path 规则。
 - Python `MySummaries.qll` 当前采用保守的 IRIS 风格：默认参数流向返回值，可能扩大召回，后续依赖 posthoc 降噪。
 - C/C++ `MySummaries.qll` 当前覆盖常见返回值传播和输出 buffer 传播，后续其他 CWE 可能需要补充更多 API 传播形态。
 - C/C++ 项目构建仍依赖 CodeQL DB 是否正确构建；有编译需求的项目需要提供 build command 或可用的 `make/cmake/gcc/g++` 环境。

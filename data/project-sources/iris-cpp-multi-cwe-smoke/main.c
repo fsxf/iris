@@ -4,8 +4,10 @@
 int sqlite3_exec(void *db, const char *sql, void *callback, void *arg, char **errmsg);
 int PyRun_SimpleString(const char *command);
 int deserialize_untrusted(const char *data);
+int parse_xml_untrusted(const char *xml);
 int curl_easy_setopt(void *curl, int option, const char *parameter);
 void send_html(const char *body);
+void send_jsonp(const char *body);
 
 #define CURLOPT_URL 10002
 
@@ -30,6 +32,10 @@ void unsafe_deserialization(char *payload) {
     deserialize_untrusted(payload);
 }
 
+void xxe(char *xml) {
+    parse_xml_untrusted(xml);
+}
+
 void ssrf(char *url) {
     curl_easy_setopt(NULL, CURLOPT_URL, url);
 }
@@ -40,14 +46,22 @@ void xss(char *name) {
     send_html(page);
 }
 
+void jsonp(char *callback) {
+    char body[512] = {0};
+    snprintf(body, sizeof(body), "%s({\"ok\":true})", callback);
+    send_jsonp(body);
+}
+
 int main(int argc, char **argv) {
     if (argc > 1) {
         path_traversal(argv[1]);
         sql_injection(argv[1]);
         code_injection(argv[1]);
         unsafe_deserialization(argv[1]);
+        xxe(argv[1]);
         ssrf(argv[1]);
         xss(argv[1]);
+        jsonp(argv[1]);
     }
     return 0;
 }

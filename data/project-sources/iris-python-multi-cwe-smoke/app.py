@@ -2,10 +2,15 @@ import os
 import pickle
 import sqlite3
 import urllib.request
+from xml.dom import minidom
 
 
 def send_html(body):
     return "<html><body>" + body + "</body></html>"
+
+
+def send_jsonp(body):
+    return body
 
 
 def execute_query(query):
@@ -32,6 +37,10 @@ def unsafe_deserialization(payload):
     return pickle.loads(payload)
 
 
+def xxe(xml_text):
+    return minidom.parseString(xml_text)
+
+
 def ssrf(url):
     return urllib.request.urlopen(url).read()
 
@@ -41,6 +50,11 @@ def xss(name):
     return send_html(page)
 
 
+def jsonp(callback):
+    body = callback + "({\"ok\": true})"
+    return send_jsonp(body)
+
+
 def main():
     value = input("value: ")
     path_traversal(value)
@@ -48,8 +62,10 @@ def main():
     execute_query(query)
     code_injection(value)
     unsafe_deserialization(value)
+    xxe(value)
     ssrf(value)
     xss(value)
+    jsonp(value)
 
 
 if __name__ == "__main__":

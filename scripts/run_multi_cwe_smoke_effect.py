@@ -15,7 +15,9 @@ QUERIES = [
     "cwe-079wLLM",
     "cwe-089wLLM",
     "cwe-094wLLM",
+    "cwe-352wLLM",
     "cwe-502wLLM",
+    "cwe-611wLLM",
     "cwe-918wLLM",
 ]
 
@@ -100,6 +102,21 @@ PY_CONFIG = {
         "steps": [],
         "params": [],
     },
+    "cwe-352wLLM": {
+        "sources": PY_SOURCE_INPUT,
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "send_jsonp",
+                "signature": "send_jsonp(body)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": [],
+    },
     "cwe-502wLLM": {
         "sources": PY_SOURCE_INPUT,
         "sinks": [
@@ -108,6 +125,21 @@ PY_CONFIG = {
                 "class": "module",
                 "method": "pickle.loads",
                 "signature": "pickle.loads(data)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": [],
+    },
+    "cwe-611wLLM": {
+        "sources": PY_SOURCE_INPUT,
+        "sinks": [
+            {
+                "package": "xml.dom.minidom",
+                "class": "module",
+                "method": "minidom.parseString",
+                "signature": "minidom.parseString(string)",
                 "sink_args": ["p0"],
                 "type": "sink",
             }
@@ -217,6 +249,21 @@ CPP_CONFIG = {
         "steps": [],
         "params": CPP_SOURCE_MAIN_ARGV,
     },
+    "cwe-352wLLM": {
+        "sources": [],
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "send_jsonp",
+                "signature": "send_jsonp(body)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": CPP_SNPRINTF,
+        "params": CPP_SOURCE_MAIN_ARGV,
+    },
     "cwe-502wLLM": {
         "sources": [],
         "sinks": [
@@ -225,6 +272,21 @@ CPP_CONFIG = {
                 "class": "function",
                 "method": "deserialize_untrusted",
                 "signature": "deserialize_untrusted(data)",
+                "sink_args": ["p0"],
+                "type": "sink",
+            }
+        ],
+        "steps": [],
+        "params": CPP_SOURCE_MAIN_ARGV,
+    },
+    "cwe-611wLLM": {
+        "sources": [],
+        "sinks": [
+            {
+                "package": "application",
+                "class": "function",
+                "method": "parse_xml_untrusted",
+                "signature": "parse_xml_untrusted(xml)",
                 "sink_args": ["p0"],
                 "type": "sink",
             }
